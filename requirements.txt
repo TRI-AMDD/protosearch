@@ -1,0 +1,3 @@
+ase>=3.17
+numpy>=1.14
+BulkEnumerator>=0.0.2
