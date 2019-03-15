@@ -1,6 +1,7 @@
 import bulk_enumerator as be
 from protosearch.workflow.prototype_db import PrototypeSQL
 
+
 class Enumeration(PrototypeSQL):
 
     def __init__(self,

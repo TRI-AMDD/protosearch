@@ -39,7 +39,6 @@ class Standards():
                       'nelm': 100,
                       'nsw': 99}
 
-
     magnetic_elements = ['Fe', 'Ni', 'Co', 'Mn']
 
     """Reference structures for formation energies, taken from 

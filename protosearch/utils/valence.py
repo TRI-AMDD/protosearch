@@ -45,7 +45,7 @@ class Valence:
     Mo = 6
     Tc = 7
     Ru = 8
-    Rh = 9    
+    Rh = 9
     Pd = 10
     Ag = 11
     Cd = 12
@@ -54,7 +54,7 @@ class Valence:
     Sb = 5
     Te = 6
     I = 7
-    Xe = 8    
+    Xe = 8
     Cs = 9
     Ba = 10
     Hf = 4
@@ -73,4 +73,3 @@ class Valence:
     At = 7
     Rn = 8
     Ra = 10
-    

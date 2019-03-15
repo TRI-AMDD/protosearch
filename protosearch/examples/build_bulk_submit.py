@@ -8,4 +8,3 @@ BB = BuildBulk(spacegroup=221,
                calc_parameters={'encut': 300})
 
 BB.submit_calculation()
-
