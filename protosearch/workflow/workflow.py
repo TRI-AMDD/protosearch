@@ -74,7 +74,6 @@ class Workflow(PrototypeSQL):
         errored = 0
 
         for d in self.ase_db.select(completed=0):
-            print('hep')
             path = d.path + '/simulation'
             calcid = d.id
             for root, dirs, files in os.walk(path):
@@ -179,7 +178,6 @@ class Workflow(PrototypeSQL):
 
 
 def clean_key_value_pairs(key_value_pairs):
-    print('hep')
     for key, value in key_value_pairs.items():
         if isinstance(value, list):
             key_value_pairs[key] = json.dumps(value)
