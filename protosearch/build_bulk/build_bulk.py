@@ -99,6 +99,11 @@ class BuildBulk(CellParameters):
         self.poscar = self.get_poscar()
         self.atoms = read_vasp(io.StringIO(self.poscar))
 
+        self.setups = {}
+        for symbol in set(self.atoms.symbols):
+            if symbol in Standards.paw_potentials:
+                self.setups.update({symbol: Standards.paw_potentials[symbol]})
+
         nbands_index = Standards.sorted_calc_parameters.index('nbands')
         nbands = self.calc_value_list[nbands_index]
         if nbands < 0:
@@ -123,7 +128,7 @@ class BuildBulk(CellParameters):
         parameterstr_list = ['{}'.format(param)
                              for param in self.calc_value_list]
         parameterstr = '/' + '/'.join(parameterstr_list)
-        print(parameterstr)
+
         subprocess.call(
             ('trisub -p {} -q {} -c {}'.
              format(parameterstr, self.queue, self.ncpus)
@@ -205,7 +210,13 @@ class BuildBulk(CellParameters):
             else:
                 modelstr += '{} = #{}\n'.format(calc_key, i+1)
 
+        modelstr += 'setups = {\n'
+        for symbol, setup in self.setups.items():
+            modelstr += "    '{}': '{}'\n".format(symbol, setup)
+        modelstr += '}\n'
+
         modelstr += '\ncalc = Vasp(\n'
+        modelstr += '    setups=setups,\n'
         for i, calc_key in enumerate(Standards.sorted_calc_parameters):
             modelstr += '    {}={},\n'.format(calc_key, calc_key)
 
@@ -217,13 +228,16 @@ class BuildBulk(CellParameters):
     def get_nbands(self, n_empty=5):
         """ get the number of bands from structure, based on the number of
         valence electrons listed in utils/valence.py"""
-        elements = [atom.symbol for atom in self.atoms]
 
         N_ions = len(self.atoms)
         N_val = 0
 
-        for ele in elements:
-            N_val += Valence.__dict__.get(ele)
+        for symbol in set(self.atoms.symbols):
+            if symbol in self.setups:
+                setup = self.setups[symbol]
+            else:
+                setup = 's'
+            N_val += Valence.__dict__.get(symbol)[setup]
 
         nbands = int(N_val / 2 + N_ions / 2 + n_empty)
         nbands += nbands % self.ncpus

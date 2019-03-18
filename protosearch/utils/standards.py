@@ -28,7 +28,7 @@ class Standards():
     calc_decimal_parameters = {'kspacing': 0.01,
                                'sigma': 0.01,
                                'ediff': 1e-6,
-                               'ediffg': -0.001, }
+                               #'ediffg': -0.001,}
 
     # Parameters that are processed by the BB module
     calc_process_parameters = ['nbands']
@@ -38,6 +38,54 @@ class Standards():
                       'lwave': False,
                       'nelm': 100,
                       'nsw': 99}
+
+    paw_potentials = {'Li': '_sv',
+                      'Na': '_pv',
+                      'K': '_sv',
+                      'Ca': '_sv',
+                      'Sc': '_sv',
+                      'Ti': '_sv',
+                      'V': '_sv',
+                      'Cr': '_pv',
+                      'Mn': '_pv',
+                      'Ga': '_d',
+                      'Ge': '_d',
+                      'Rb': '_sv',
+                      'Sr': '_sv',
+                      'Y': '_sv',
+                      'Zr': '_sv',
+                      'Nb': '_sv',
+                      'Mo': '_sv',
+                      'Tc': '_pv',
+                      'Ru': '_pv',
+                      'Rh': '_pv',
+                      'In': '_d',
+                      'Sn': '_d',
+                      'Cs': '_sv',
+                      'Ba': '_sv',
+                      'Pr': '_3',
+                      'Nd': '_3',
+                      'Pm': '_3',
+                      'Sm': '_3',
+                      'Eu': '_2',
+                      'Gd': '_3',
+                      'Tb': '_3',
+                      'Dy': '_3',
+                      'Ho': '_3',
+                      'Er': '_3',
+                      'Tm': '_3',
+                      'Yb': '_2',
+                      'Lu': '_3',
+                      'Hf': '_pv',
+                      'Ta': '_pv',
+                      'W': '_sv',
+                      'Tl': '_d',
+                      'Pb': '_d',
+                      'Bi': '_d',
+                      'Po': '_d',
+                      'At': '_d',
+                      'Fr': '_sv',
+                      'Ra': '_sv'}
 
     magnetic_elements = ['Fe', 'Ni', 'Co', 'Mn']
 
