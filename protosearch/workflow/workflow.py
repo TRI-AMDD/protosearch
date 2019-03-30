@@ -17,15 +17,17 @@ class Workflow(PrototypeSQL):
         TRI_PATH = os.environ['TRI_PATH']
         username = os.environ['TRI_USERNAME']
         self.basepath = TRI_PATH + '/model/vasp/1/u/{}'.format(username)
+        self.collected = False
 
+    def _collect(self):
+        if self.collected:
+            return
         subprocess.call('trisync', cwd=self.basepath)
+        self.collected = True
+        #self.check_submissions()
+        #self.rerun_failed_calculations()
 
-    def collect(self):
-        self.check_submissions()
-        self.rerun_failed_calculations()
-
-    def submit(self, prototype, ncpus=None, calc_parameters=None):
-
+    def submit(self, prototype, ncpus=1, calc_parameters={}):
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
                        prototype['species'],
@@ -67,6 +69,7 @@ class Workflow(PrototypeSQL):
         self.ase_db.write(atoms, key_value_pairs)
 
     def check_submissions(self):
+        self._collect()
         con = self.connection or self._connect()
         self._initialize(con)
 
@@ -150,6 +153,7 @@ class Workflow(PrototypeSQL):
         return
 
     def rerun_failed_calculations(self):
+        self._collect()
         con = self.connection or self._connect()
         self._initialize(con)
 
