@@ -51,7 +51,7 @@ class Workflow(PrototypeSQL):
 
         prototypes = self.select(**selection)
 
-        for prototype in prototype:
+        for prototype in prototypes:
             self.submit(prototype)
 
     def write_submission(self, key_value_pairs):
