@@ -1,16 +1,13 @@
-import sys
 import os
 import io
 import subprocess
+import shlex
 
-import ase
-from ase.calculators.vasp import Vasp
 from ase.io.vasp import read_vasp
 import bulk_enumerator as be
 
 from protosearch.utils.standards import Standards
 from protosearch.utils.valence import Valence
-from protosearch.workflow.prototype_db import PrototypeSQL
 from .cell_parameters import CellParameters
 
 from protosearch import __version__ as version
@@ -56,8 +53,8 @@ class BuildBulk(CellParameters):
                  species,
                  ncpus=1,
                  queue='small',
-                 calc_parameters={},
-                 cell_parameters={}
+                 calc_parameters=None,
+                 cell_parameters=None
                  ):
 
         super().__init__(spacegroup=spacegroup,
@@ -78,7 +75,7 @@ class BuildBulk(CellParameters):
         self.ncpus = ncpus
         self.queue = queue
 
-        self.calc_parameters = calc_parameters
+        self.calc_parameters = calc_parameters or {}
         self.calc_value_list = []
         for param in Standards.sorted_calc_parameters:
             if param in self.calc_parameters:
@@ -87,7 +84,7 @@ class BuildBulk(CellParameters):
                 self.calc_value_list += [Standards.calc_parameters[param]]
 
         self.cell_parameters = self.get_parameter_estimate()
-        self.cell_parameters.update(cell_parameters)
+        self.cell_parameters.update(cell_parameters or {})
 
         self.cell_param_list = []
         self.cell_value_list = []
@@ -124,10 +121,9 @@ class BuildBulk(CellParameters):
                              for param in self.calc_value_list]
         parameterstr = '/' + '/'.join(parameterstr_list)
         print(parameterstr)
-        subprocess.call(
-            ('trisub -p {} -q {} -c {}'.
-             format(parameterstr, self.queue, self.ncpus)
-             ).split(), cwd=self.excpath)
+        command = shlex.split('trisub -p {} -q {} -c {}'.format(
+            parameterstr, self.queue, self.ncpus))
+        subprocess.call(command, cwd=self.excpath)
 
     def get_poscar(self):
         """Get POSCAR structure file from the Enumerator """
