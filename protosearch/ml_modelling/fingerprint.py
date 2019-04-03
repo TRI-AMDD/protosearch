@@ -42,7 +42,8 @@ class FingerPrint:
 
     def __init__(self,
         feature_methods=None,
-        input_objects=None,
+        input_data=None,
+        input_index=None,
         ):
         """__init__.
 
@@ -50,14 +51,18 @@ class FingerPrint:
         ----------
         feature_methods : list
             List of featurizing methods to apply to inputs.
-        inputs : list
-            List of inputs to be featurized
+        input_data : list or pandas_dataframe
+            Pandas dataframe containing a column corresponding to the input
+            objects to be featurized.
+            'input_index' must be defined to index the correct column
         """
         #| - __init__
 
         #| - Setting Class Attributes
         self.__feature_methods__ = feature_methods
-        self.input_objects = input_objects
+
+        self.input_data = input_data
+        self.__input_index__ = input_index
         #__|
 
         self.__check_class_inputs__()
@@ -71,11 +76,11 @@ class FingerPrint:
         """
         """
         #| - __checking_class_inputs__
+        feature_methods = self.__feature_methods__
+        input_data = self.input_data
+        input_index = self.__input_index__
 
         #| - __feature_methods__
-        feature_methods = self.__feature_methods__
-
-
         err_mess_i = "feature_methods must be of type <list>"
         assert feature_methods is not None, err_mess_i
 
@@ -87,16 +92,43 @@ class FingerPrint:
             err_mess_i += str(feature_methods_dict.keys())
 
             assert meth_i in feature_methods_dict.keys(), err_mess_i
+        #__|
+
+        #| - input_data
+        is_pd_df = isinstance(
+            input_data,
+            pd.DataFrame,
+            )
+
+        if is_pd_df is False:
+            msg = "Please give input_data as a pandas dataframe \n"
+            msg += "At the least a dataframe with 1 column"
+
+            raise TypeError("Please give input_data as a pandas dataframe")
+        #__|
+
+        #| - input_index
+
+        if type(input_index) is list:
+            self.__input_index__ = tuple(input_index)
+
+        elif type(input_index) is set:
+            pass
+        else:
+            raise TypeError("input_index must be given as a <list> or <set>")
 
         #__|
 
         #__|
 
-    def __check_input_objects__(self):
+    # COMBAK
+    # Redundant with __checking_class_inputs__??
+    def __check_input_data__(self):
         """
         """
-        #| - __check_input_objects__
+        #| - __check_input_data__
         tmp = 42
+        print(tmp)
 
         #__|
 
@@ -105,13 +137,17 @@ class FingerPrint:
         """
         #| - __instantiate_feature_classes__
         feature_methods = self.__feature_methods__
-        input_objects = self.input_objects
+        input_data = self.input_data
+        input_index = self.__input_index__
 
         out_dict = {}
         for meth_i in feature_methods:
             feature_class_name_i = feature_methods_dict[meth_i]
             class_i = getattr(sys.modules[__name__], feature_class_name_i)
-            instance_i = class_i(input_objects)
+
+            # TEMP
+            input_array = input_data.loc[:, input_index].tolist()
+            instance_i = class_i(input_array)
 
             out_dict[meth_i] = instance_i
 
@@ -124,6 +160,8 @@ class FingerPrint:
         #| - clean_features
         df_features = self.fingerprints
         df_features_cpy = copy.deepcopy(df_features)
+
+        # print(df_features)
 
         train_features = df_features_cpy.values
         train_labels = list(df_features_cpy)
@@ -192,6 +230,11 @@ class FingerPrint:
             )
 
         df_features_cleaned.columns = multi_index
+
+        df_features_cleaned = df_features_cleaned.set_index(
+            df_features.index,
+            drop=True, append=False,
+            inplace=False, verify_integrity=False)
         #__|
 
 
@@ -217,7 +260,7 @@ class FingerPrint:
     def generate_fingerprints(self):
         #| - generate_fingerprints
         feature_instances = self.__feature_instances__
-
+        input_data = self.input_data
 
         # Collecting fingerprint dataframes from fingerprint instances
         fingerprints = {}
@@ -225,7 +268,6 @@ class FingerPrint:
             feature_instance_i.generate_fingerprints()
 
             features_i = feature_instance_i.features
-            fingerprints[name_i] = features_i
 
             #| - Checking type of fingerprints (must be pandas dataframe)
             # Fingerprints must be given as a pandas dataframe
@@ -238,19 +280,49 @@ class FingerPrint:
             assert is_pd_df is True, err_mess_i
             #__|
 
+
+            features_i = features_i.set_index(
+                input_data.index,
+                # np.array(rand_ids),
+                drop=False, append=False,
+                inplace=False, verify_integrity=True)
+
+            fingerprints[name_i] = features_i
+
+
         fingerprints_out = pd.concat(
             fingerprints.values(),
             axis=1,
             keys=fingerprints.keys())\
 
 
-
         self.fingerprints = fingerprints_out
-
-
-        # return(fingerprints_out)
         #__|
 
+
+    def join_input_to_fingerprints(self):
+        #| - join_input_to_fingerprints
+        input_data = self.input_data
+        fingerprints = self.fingerprints
+
+        df_out = pd.merge(input_data, fingerprints,
+            left_index=True,
+            right_index=True,
+            indicator=True,
+            )
+
+        # TODO
+        #| - Check that operation was succesful
+        print(len(input_data))
+        print(len(fingerprints))
+
+        print(len(df_out))
+        #__|
+
+        # return(input_data, fingerprints)
+
+        return(df_out)
+        #__|
 
     #__| **********************************************************************
 
@@ -287,6 +359,8 @@ class VoronoiFingerprint:
         """
         #| - __init__
         self.atoms_list = atoms_list
+
+        self.__check_inputs__()
 
         self.Voro_inst = VoronoiFingerprintGenerator(
             self.atoms_list,
