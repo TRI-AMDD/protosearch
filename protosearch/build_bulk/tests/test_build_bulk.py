@@ -3,12 +3,12 @@ import os
 import tempfile
 import unittest
 
-from protosearch.protosearch.build_bulk.build_bulk import BuildBulk
+from protosearch.build_bulk.build_bulk import BuildBulk
 
 
 class BuildBulkTest(unittest.TestCase):
     def setUp(self):
-        self.bb_iron = BuildBulk(255, ['l'], "Cu")
+        self.bb_iron = BuildBulk(225, ['l'], ["Cu"])
         self.pwd = os.getcwd()
         self.tempdir = tempfile.mkdtemp()
         os.chdir(self.tempdir)
@@ -26,9 +26,6 @@ class BuildBulkTest(unittest.TestCase):
     def test_get_nbands(self):
         nbands_default = self.bb_iron.get_nbands()
         self.assertEqual(nbands_default, 12)
-
-    def test_get_poscar(self):
-        pass
 
 
 if __name__ == '__main__':

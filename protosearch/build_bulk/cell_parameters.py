@@ -78,7 +78,7 @@ class CellParameters:
             return None
 
     def set_lattice_dof(self):
-        """Set degrees of fredom for lattice constants and angles
+        """Set degrees of freedom for lattice constants and angles
         based on spacegroup
         """
         sg = self.spacegroup
@@ -119,13 +119,13 @@ class CellParameters:
         self.d_o_f = relax
         self.fixed_angles = fixed_angles
 
-    def get_atoms(self, fix_parameters={}):
+    def get_atoms(self, fix_parameters=None):
         """
         Get ASE atoms object generated with the Enumerator 
         with parameters specified in `fix_parameters`. If all parameters
         are not provided, a very rough estimate will be applied.
         """
-        self.parameter_guess.update(fix_parameters)
+        self.parameter_guess.update(fix_parameters or {})
 
         parameter_guess_values = []
         for p in self.parameters:
@@ -225,7 +225,7 @@ class CellParameters:
         Diff = 1
         j = 1
         while Diff > 0.01:  # Outer convergence criteria
-            print('Wyckoff coordinate iteration {}'.format(j))
+            print('Wyckoff coordinate iteration {}, conv: {}'.format(j, Diff))
             # Change one parameter at the time
             for coor_param in self.coor_parameters:
                 cp0 = self.parameter_guess[coor_param]
