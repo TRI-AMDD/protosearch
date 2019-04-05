@@ -11,6 +11,17 @@ class Enumeration(PrototypeSQL):
                  SG_start=1,
                  SG_end=230,
                  num_type='atom'):
+        """
+        # TODO: clarify num_start, num_end, num_type
+
+        Args:
+            stoichiometry (str): chemical formula
+            num_start (int): minimum number of atoms or wyckoff sites?
+            num_end (int): maximum number of atoms or wyckoff sites?
+            SG_start (int): spacegroup number minimum
+            SG_end (int): spacegroup number maximum
+            num_type (int): whether the num is atoms or wyckoff?
+        """
 
         super().__init__()
         self.stoichiometry = stoichiometry
@@ -24,7 +35,7 @@ class Enumeration(PrototypeSQL):
         self.SG_start = spacegroup
         self.SG_end = spacegroup + 1
 
-    def set_stiochiometry(self, stiochiometry):
+    def set_stoichiometry(self, stoichiometry):
         self.stoichiometry = stoichiometry
 
     def set_natoms(self, natoms):
