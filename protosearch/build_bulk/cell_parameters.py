@@ -2,6 +2,7 @@ import io
 import numpy as np
 from numpy.random import rand
 import ase
+from ase import visualize
 from ase.geometry import get_distances, cell_to_cellpar, cellpar_to_cell
 from ase.data import atomic_numbers as a_n
 from ase.data import covalent_radii as cradii
@@ -52,27 +53,37 @@ class CellParameters:
         self.set_lattice_dof()
         self.parameter_guess = self.initial_guess()
 
-    def get_parameter_estimate(self):
+    def get_parameter_estimate(self, master_parameters={}):
         """ 
         Optimize lattice parameters for Atoms object generated with the bulk
         Enumerator.
         First wyckoff coordinates are optimized, then the angles, and at last
         the lattice constant.
+
+        Parameters:
+        master_parameters: dict
+           fixed cell parameters and values that will not be optimized.
         """
 
-        fix_parameters = self.parameter_guess
+        cell_parameters = self.parameter_guess
+        cell_parameters.update(master_parameters)
+
         if self.coor_parameters:
-            coor_guess = self.get_wyckoff_coordinates()
-            fix_parameters.update(coor_guess)
-        if np.any([angle in self.parameters for angle in
-                   ['alpha', 'beta', 'gamma']]):
-            angle_guess = self.get_angles(fix_parameters)
-            fix_parameters.update(angle_guess)
+            if not np.all([c in master_parameters for c in self.coor_parameters]):
+                coor_guess = self.get_wyckoff_coordinates()
+                cell_parameters.update(coor_guess)
+        if self.angle_parameters:
+            if not np.all([c in master_parameters for c in self.angle_parameters]):
+                angle_guess = self.get_angles(cell_parameters)
+                cell_parameters.update(angle_guess)
 
-        fix_parameters = self.get_lattice_constants(fix_parameters)
+        if not np.all([c in master_parameters for c in self.lattice_parameters]):
+            print('optimizing lattice constants')
+            cell_parameters = self.get_lattice_constants(cell_parameters)
 
-        if self.check_prototype(self.atoms):
-            return fix_parameters
+        atoms = self.get_atoms(fix_parameters=cell_parameters)
+        if self.check_prototype(atoms):
+            return cell_parameters
         else:
             print("Structure reduced to another spacegroup")
             return None
@@ -125,7 +136,9 @@ class CellParameters:
         with parameters specified in `fix_parameters`. If all parameters
         are not provided, a very rough estimate will be applied.
         """
-        self.parameter_guess.update(fix_parameters or {})
+
+        if fix_parameters:
+            self.parameter_guess.update(fix_parameters)
 
         parameter_guess_values = []
         for p in self.parameters:
@@ -152,7 +165,8 @@ class CellParameters:
 
         if not sg2 == self.spacegroup \
            or not w2 == self.wyckoffs:
-            print('Symmetry reduced to {}, {}'.format(b2.get_spacegroup(), b2))
+            print('Symmetry reduced to {} from {}'.format(sg2, self.spacegroup))
+            print('Wyckoffs reduced to {} from {}'.format(w2, self.wyckoffs))
             return False
 
         return True
@@ -321,7 +335,7 @@ class CellParameters:
 
         return self.parameter_guess
 
-    def get_lattice_constants(self, fix_parameters={}):
+    def get_lattice_constants(self, fix_parameters={}, proximity=1.0):
         """
         Get lattice constants by reducing the cell size (one direction at 
         the time) until atomic distances on the closest pair reaches the 
@@ -342,7 +356,7 @@ class CellParameters:
 
         M = covalent_radii * np.ones([len(atoms), len(atoms)])
 
-        min_distances = (M + M.T) * 1.2
+        min_distances = (M + M.T) * proximity
         np.fill_diagonal(min_distances, 0)
 
         while np.any(distances < min_distances * 1.2):
@@ -350,7 +364,7 @@ class CellParameters:
             Dm, distances = get_distances(atoms.positions,
                                           cell=atoms.cell, pbc=True)
 
-        soft_limit = 1.5
+        soft_limit = 1.2
         while np.all(distances >= min_distances * soft_limit):
             atoms.set_cell(atoms.cell * 0.9, scale_atoms=True)
             Dm, distances = get_distances(atoms.positions,

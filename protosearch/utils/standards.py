@@ -1,45 +1,140 @@
-class Standards():
+class CellStandards():
 
     sorted_cell_parameters = ['a', 'b/a', 'c/a', 'alpha', 'beta', 'gamma']
 
+
+class VaspStandards():
+    # Parameters to that will be tracked in parameterized model
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
-                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave']
+                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave',
+                              'ldau', 'ldautype']
+
+    """Parameters are heavily inspired by MP standard settings at
+    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/io/vasp/MPRelaxSet.yaml
+    """
 
     calc_parameters = {'xc': 'pbe',
-                       'encut': 600,  # energy cutoff for plane waves
+                       'encut': 520,  # energy cutoff for plane waves
                        'nbands': -5,  # number of bands / empty bands
-                       'ispin': 1,  # number of spins
+                       'ispin': 2,  # number of spins
                        'kspacing': 20,  # kspacing in units of 0.01
                        'kgamma': True,  # include gamma point
                        'ismear': -5,  # smearing function
-                       'sigma': 10,  # k-point smearing in units of 0.01
+                       'sigma': 5,  # k-point smearing in units of 0.01
                        'ibrion': 2,  # ion dynamics
                        'isif': 3,  # degrees of freedom to relax
                        'nsw': 99,  # maximum number of ionic steps
                        'nelm': 100,  # maximum number of electronic steps
-                       'ediff': 50,  # sc accuracy
+                       'ediff': 10,  # sc accuracy in units of 1e-6
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
-                       'lwave': False}  # save wavefunctions or not
+                       'lwave': False,  # save wavefunctions or not
+                       'ldau': True,  # USE U
+                       'lmaxmix': 4,
+                       'ldautype': 2}
 
     # parameters are submitted as an integer,
     # that will be multiplied by the standard below
     calc_decimal_parameters = {'kspacing': 0.01,
                                'sigma': 0.01,
                                'ediff': 1e-6,
-                               'ediffg': -0.001, }
+                               # 'ediffg': -0.001,
+                               }
 
-    # Parameters that are processed by the BB module
-    calc_process_parameters = ['nbands']
+    paw_potentials = {'Li': '_sv',
+                      'Na': '_pv',
+                      'K': '_sv',
+                      'Ca': '_sv',
+                      'Sc': '_sv',
+                      'Ti': '_sv',
+                      'V': '_sv',
+                      'Cr': '_pv',
+                      'Mn': '_pv',
+                      'Ga': '_d',
+                      'Ge': '_d',
+                      'Rb': '_sv',
+                      'Sr': '_sv',
+                      'Y': '_sv',
+                      'Zr': '_sv',
+                      'Nb': '_sv',
+                      'Mo': '_sv',
+                      'Tc': '_pv',
+                      'Ru': '_pv',
+                      'Rh': '_pv',
+                      'In': '_d',
+                      'Sn': '_d',
+                      'Cs': '_sv',
+                      'Ba': '_sv',
+                      'Pr': '_3',
+                      'Nd': '_3',
+                      'Pm': '_3',
+                      'Sm': '_3',
+                      'Eu': '_2',
+                      'Gd': '_3',
+                      'Tb': '_3',
+                      'Dy': '_3',
+                      'Ho': '_3',
+                      'Er': '_3',
+                      'Tm': '_3',
+                      'Yb': '_2',
+                      'Lu': '_3',
+                      'Hf': '_pv',
+                      'Ta': '_pv',
+                      'W': '_sv',
+                      'Tl': '_d',
+                      'Pb': '_d',
+                      'Bi': '_d',
+                      'Po': '_d',
+                      'At': '_d',
+                      'Fr': '_sv',
+                      'Ra': '_sv'}
 
-    # Parameters that doesn't affect the calculational result:
-    run_parameters = {'algo': 'FAST',
-                      'lwave': False,
-                      'nelm': 100,
-                      'nsw': 99}
 
-    magnetic_elements = ['Fe', 'Ni', 'Co', 'Mn']
+class EspressoStandards():
+    # Espresso parameters to that will be tracked in parameterized model
+    sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
+                              'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
+                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave',
+                              'ldau', 'ldautype']
+
+
+class CommonCalc():
+    """+U values"""
+    U_trickers = ['O', 'F']  # Oxides and Flourides will have +U
+    ldau_luj = {'Au': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'C':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Cu': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'H':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Ir': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'O':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Co': {'L': 2, 'U': 3.32, 'J': 0.0},
+                'Cr': {'L': 2, 'U': 3.7, 'J': 0.0},  # Meng U: 3.5
+                'Fe': {'L': 2, 'U': 5.3, 'J': 0.0},  # 'U': 4.3
+                'Mn': {'L': 2, 'U': 3.9, 'J': 0.0},  # 'U': 3.75
+                'Mo': {'L': 2, 'U': 4.38, 'J': 0.0},
+                'Nb': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ni': {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 6.45
+                'Sn': {'L': 2, 'U': 3.5, 'J': 0.0},
+                'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
+                'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
+                'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
+                'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
+
+    initial_magnetic_moments = {'Ce': 5,
+                                'Co': 5,
+                                'Cr': 5,
+                                'Fe': 5,
+                                'Mn': 5,
+                                'Mo': 5,
+                                'Ni': 5,
+                                'V': 5,
+                                'W': 5}
+
+
+class CrystalStandards():
 
     """Reference structures for formation energies, taken from 
     Materials Project.

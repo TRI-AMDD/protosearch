@@ -1,4 +1,4 @@
-from build_bulk.build_bulk import BuildBulk
+from protosearch.build_bulk.build_bulk import BuildBulk
 
 
 BB = BuildBulk(spacegroup=221,

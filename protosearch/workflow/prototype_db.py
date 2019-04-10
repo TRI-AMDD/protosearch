@@ -7,7 +7,6 @@ from ase.db.sqlite import SQLite3Database
 from ase.io import read
 import sqlite3
 
-from protosearch.utils.standards import Standards
 from .classification import get_classification
 
 init_commands = [

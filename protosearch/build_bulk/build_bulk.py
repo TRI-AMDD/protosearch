@@ -6,8 +6,11 @@ import shlex
 from ase.io.vasp import read_vasp
 import bulk_enumerator as be
 
-from protosearch.utils.standards import Standards
-from protosearch.utils.valence import Valence
+from protosearch.utils.standards import CellStandards
+from protosearch.workflow.prototype_db import PrototypeSQL
+from protosearch.calculators.vasp import VaspModel
+from protosearch.calculators.calculator import get_calculator
+
 from .cell_parameters import CellParameters
 
 from protosearch import __version__ as version
@@ -31,6 +34,7 @@ class BuildBulk(CellParameters):
        number of cpus on AWS to use, default: 1
     queue: 'small', 'medium',
        Queue specificatin for AWS
+    calculator: 'vaps' or 'espresso'
     calc_parameters: dict
        Optional specification of parameters, such as {ecut: 300}. 
        If not specified, the parameter standards given in 
@@ -53,6 +57,7 @@ class BuildBulk(CellParameters):
                  species,
                  ncpus=1,
                  queue='small',
+                 calculator='vasp',
                  calc_parameters=None,
                  cell_parameters=None
                  ):
@@ -64,66 +69,36 @@ class BuildBulk(CellParameters):
         assert (0 < spacegroup < 231 and isinstance(spacegroup, int)), \
             'Spacegroup must be an integer between 1 and 230'
 
+        self.poscar = None
+        self.atoms = None
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
 
         TRI_PATH = os.environ['TRI_PATH']
         username = os.environ['TRI_USERNAME']
-        self.basepath = TRI_PATH + '/model/vasp/1/u/{}'.format(username)
+        self.calculator = calculator
+        self.basepath = TRI_PATH + '/model/{}/1/u/{}'.format(calculator,
+                                                             username)
 
         self.ncpus = ncpus
         self.queue = queue
 
-        self.calc_parameters = calc_parameters or {}
-        self.calc_value_list = []
-        for param in Standards.sorted_calc_parameters:
-            if param in self.calc_parameters:
-                self.calc_value_list += [self.calc_parameters[param]]
-            else:
-                self.calc_value_list += [Standards.calc_parameters[param]]
+        self.calc_parameters = calc_parameters
+        master_parameters = cell_parameters or {}
+        self.cell_parameters = self.get_parameter_estimate(master_parameters)
 
-        self.cell_parameters = self.get_parameter_estimate()
-        self.cell_parameters.update(cell_parameters or {})
+        if self.cell_parameters:
+            self.cell_param_list = []
+            self.cell_value_list = []
 
-        self.cell_param_list = []
-        self.cell_value_list = []
-        for param in Standards.sorted_cell_parameters:
-            if param in self.cell_parameters:
+            for param in self.cell_parameters:
                 self.cell_value_list += [self.cell_parameters[param]]
                 self.cell_param_list += [param]
 
-        self.poscar = self.get_poscar()
-        self.atoms = read_vasp(io.StringIO(self.poscar))
 
-        nbands_index = Standards.sorted_calc_parameters.index('nbands')
-        nbands = self.calc_value_list[nbands_index]
-        if nbands < 0:
-            self.calc_value_list[nbands_index] = self.get_nbands(
-                n_empty=abs(nbands))
-        else:
-            self.calc_value_list[nbands_index] = self.get_nbands()
-
-    def submit_calculation(self):
-        """Submit calculation for unique structure. 
-        First the execution path is set, then the initial POSCAR and models.py
-        is written to the directory.
-
-        The calculation is submitted as a parametrized model with trisub.
-        """
-
-        self.set_execution_path()
-
-        self.write_poscar(self.excpath + '/initial.POSCAR')
-        self.write_model(self.excpath + '/model.py')
-
-        parameterstr_list = ['{}'.format(param)
-                             for param in self.calc_value_list]
-        parameterstr = '/' + '/'.join(parameterstr_list)
-        print(parameterstr)
-        command = shlex.split('trisub -p {} -q {} -c {}'.format(
-            parameterstr, self.queue, self.ncpus))
-        subprocess.call(command, cwd=self.excpath)
+            self.poscar = self.get_poscar()
+            self.atoms = read_vasp(io.StringIO(self.poscar))
 
     def get_poscar(self):
         """Get POSCAR structure file from the Enumerator """
@@ -136,6 +111,26 @@ class BuildBulk(CellParameters):
         self.prototype_name = b.get_name()
 
         return b.get_primitive_poscar()
+
+    def submit_calculation(self):
+        """Submit calculation for unique structure. 
+        First the execution path is set, then the initial POSCAR and models.py
+        is written to the directory.
+
+        The calculation is submitted as a parametrized model with trisub.
+        """
+
+        self.set_execution_path()
+        self.write_poscar(self.excpath + '/initial.POSCAR')
+        self.write_model(self.excpath)
+
+        parameterstr_list = ['{}'.format(param)
+                             for param in self.calc_value_list]
+        parameterstr = '/' + '/'.join(parameterstr_list)
+
+        command = shlex.split('trisub -p {} -q {} -c {}'.format(
+            parameterstr, self.queue, self.ncpus))
+        subprocess.call(command, cwd=self.excpath)
 
     def write_poscar(self, filepath):
         """Write POSCAR to specified file"""
@@ -177,51 +172,14 @@ class BuildBulk(CellParameters):
         os.mkdir(self.excpath)
 
     def write_model(self, filepath):
-        """ Write a model.py to the calc directory, which uses the ASE interface
-        to Vasp.
-        Since a parameterized model will be submitted with trisub, 
-        the parameters are given the values #1, #2, #3... etc"""
+        """ Write model.py"""
+        symbols = self.atoms.symbols
+        Calculator = get_calculator(self.calculator)
 
-        modelstr = '#!/usr/bin/env python\n\n'
-        modelstr += 'from ase.io import read\n' + \
-            'from ase.units import Rydberg as Ry\n' + \
-            'from ase.calculators.vasp import Vasp\n\n'
+        modelstr, self.calc_value_list \
+            = Calculator(self.calc_parameters,
+                         symbols,
+                         self.ncpus).get_model()
 
-        modelstr += "atoms = read('initial.POSCAR')\n\n"
-
-        for i, calc_key in enumerate(Standards.sorted_calc_parameters):
-            factor = None
-            if calc_key in Standards.calc_decimal_parameters:
-                factor = Standards.calc_decimal_parameters[calc_key]
-            if factor:
-                modelstr += '{} = #{} * {}\n'.format(calc_key, i+1, factor)
-
-            elif isinstance(self.calc_value_list[i], str):
-                modelstr += "{} = '#{}'\n".format(calc_key, i+1)
-            else:
-                modelstr += '{} = #{}\n'.format(calc_key, i+1)
-
-        modelstr += '\ncalc = Vasp(\n'
-        for i, calc_key in enumerate(Standards.sorted_calc_parameters):
-            modelstr += '    {}={},\n'.format(calc_key, calc_key)
-
-        modelstr += ')\n\ncalc.calculate(atoms)\n'
-
-        with open(filepath, 'w') as f:
+        with open(filepath + '/model.py', 'w') as f:
             f.write(modelstr)
-
-    def get_nbands(self, n_empty=5):
-        """ get the number of bands from structure, based on the number of
-        valence electrons listed in utils/valence.py"""
-        elements = [atom.symbol for atom in self.atoms]
-
-        N_ions = len(self.atoms)
-        N_val = 0
-
-        for ele in elements:
-            N_val += Valence.__dict__.get(ele)
-
-        nbands = int(N_val / 2 + N_ions / 2 + n_empty)
-        nbands += nbands % self.ncpus
-
-        return nbands
