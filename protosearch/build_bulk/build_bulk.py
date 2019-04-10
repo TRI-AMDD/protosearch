@@ -97,6 +97,9 @@ class BuildBulk(CellParameters):
                 self.cell_param_list += [param]
 
 
+            self.poscar = self.get_poscar()
+            self.atoms = read_vasp(io.StringIO(self.poscar))
+
     def get_poscar(self):
         """Get POSCAR structure file from the Enumerator """
         b = be.bulk.BULK()
@@ -132,8 +135,6 @@ class BuildBulk(CellParameters):
 
     def write_poscar(self, filepath):
         """Write POSCAR to specified file"""
-        if not self.poscar:
-            self.poscar = self.get_poscar()
         with open(filepath, 'w') as f:
             f.write(self.poscar)
 
@@ -173,8 +174,6 @@ class BuildBulk(CellParameters):
 
     def write_model(self, filepath):
         """ Write model.py"""
-        if not self.atoms:
-            self.atoms = read_vasp(io.StringIO(self.poscar))
         symbols = self.atoms.symbols
         Calculator = get_calculator(self.calculator)
 
