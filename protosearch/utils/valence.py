@@ -1,4 +1,4 @@
-class Valence:
+class VaspValence:
     """Setup dependent number of valence electrons for each element, 
     used to compute the number of bands in VASP calculation
     """
