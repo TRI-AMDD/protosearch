@@ -1,7 +1,9 @@
-class Standards():
+class CellStandards():
 
     sorted_cell_parameters = ['a', 'b/a', 'c/a', 'alpha', 'beta', 'gamma']
 
+
+class VaspStandards():
     # Parameters to that will be tracked in parameterized model
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
@@ -28,7 +30,7 @@ class Standards():
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
                        'lwave': False,  # save wavefunctions or not
-                       'ldau': True,  # USE +U
+                       'ldau': True,  # USE U
                        'lmaxmix': 4}
 
     # parameters are submitted as an integer,
@@ -38,39 +40,6 @@ class Standards():
                                'ediff': 1e-6,
                                # 'ediffg': -0.001,
                                }
-
-    """+U values"""
-    U_trickers = ['O', 'F']  # Oxides and Flourides will have +U
-    ldau_luj = {'Au': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'C':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Cu': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'H':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Ir': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'O':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Co': {'L': 2, 'U': 3.32, 'J': 0.0},
-                'Cr': {'L': 2, 'U': 3.7, 'J': 0.0},  # Meng U: 3.5
-                'Fe': {'L': 2, 'U': 5.3, 'J': 0.0},  # 'U': 4.3
-                'Mn': {'L': 2, 'U': 3.9, 'J': 0.0},  # 'U': 3.75
-                'Mo': {'L': 2, 'U': 4.38, 'J': 0.0},
-                'Nb': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ni': {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 6.45
-                'Sn': {'L': 2, 'U': 3.5, 'J': 0.0},
-                'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
-                'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
-                'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
-                'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
-
-    initial_magnetic_moments = {'Ce': 5,
-                                'Co': 5,
-                                'Cr': 5,
-                                'Fe': 5,
-                                'Mn': 5,
-                                'Mo': 5,
-                                'Ni': 5,
-                                'V': 5,
-                                'W': 5}
 
     paw_potentials = {'Li': '_sv',
                       'Na': '_pv',
@@ -119,6 +88,52 @@ class Standards():
                       'At': '_d',
                       'Fr': '_sv',
                       'Ra': '_sv'}
+
+
+class EspressoStandards():
+    # Espresso parameters to that will be tracked in parameterized model
+    sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
+                              'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
+                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave',
+                              'ldau', 'ldautype']
+
+
+class CommonCalc():
+    """+U values"""
+    U_trickers = ['O', 'F']  # Oxides and Flourides will have +U
+    ldau_luj = {'Au': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'C':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Cu': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'H':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Ir': {'L': -1, 'U': 0.0, 'J': 0.0},
+                'O':  {'L': -1, 'U': 0.0, 'J': 0.0},
+                'Co': {'L': 2, 'U': 3.32, 'J': 0.0},
+                'Cr': {'L': 2, 'U': 3.7, 'J': 0.0},  # Meng U: 3.5
+                'Fe': {'L': 2, 'U': 5.3, 'J': 0.0},  # 'U': 4.3
+                'Mn': {'L': 2, 'U': 3.9, 'J': 0.0},  # 'U': 3.75
+                'Mo': {'L': 2, 'U': 4.38, 'J': 0.0},
+                'Nb': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ni': {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 6.45
+                'Sn': {'L': 2, 'U': 3.5, 'J': 0.0},
+                'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
+                'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
+                'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
+                'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
+                'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
+
+    initial_magnetic_moments = {'Ce': 5,
+                                'Co': 5,
+                                'Cr': 5,
+                                'Fe': 5,
+                                'Mn': 5,
+                                'Mo': 5,
+                                'Ni': 5,
+                                'V': 5,
+                                'W': 5}
+
+
+class CrystalStandards():
 
     """Reference structures for formation energies, taken from 
     Materials Project.
