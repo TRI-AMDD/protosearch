@@ -6,6 +6,7 @@ import json
 import os,sys
 import ase
 from ase.db import connect
+from ase.visualize import view
 
 from protosearch.build_bulk.build_bulk import BuildBulk
 
@@ -51,6 +52,7 @@ for i, row in enumerate(data_complete):
         atoms = bulk_generator.atoms
         
         if atoms:
+            view(atoms)
             database.write(atoms)
     except BaseException:        
         print('Error: something is wrong with this structure')
