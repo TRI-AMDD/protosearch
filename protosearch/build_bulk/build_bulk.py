@@ -54,9 +54,20 @@ class BuildBulk(CellParameters):
                  ncpus=1,
                  queue='small',
                  calc_parameters=None,
-                 cell_parameters=None
+                 cell_parameters=None,
+                 basepath_ext=None,
                  ):
+        """Setup BuildBulk class.
 
+        Parameters
+        ----------
+        basepath_ext: <str>
+            Root directory in which to place and run jobs.
+            Model AWS folder structure:
+              `$TRI_PATH/model/vasp/1/u/<username>`
+            'basepath_ext' will be appended to end of path
+              '$TRI_PATH/model/vasp/1/u/<username>/<basepath_ext>'
+        """
         super().__init__(spacegroup=spacegroup,
                          wyckoffs=wyckoffs,
                          species=species)
@@ -67,10 +78,13 @@ class BuildBulk(CellParameters):
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
+        self.__basepath_ext__ = basepath_ext
 
-        TRI_PATH = os.environ['TRI_PATH']
-        username = os.environ['TRI_USERNAME']
-        self.basepath = TRI_PATH + '/model/vasp/1/u/{}'.format(username)
+
+        self.__tri_path__ = os.environ['TRI_PATH']
+        self.__username__ = os.environ["TRI_USERNAME"]
+
+        self.__set_basepath__()
 
         self.ncpus = ncpus
         self.queue = queue
@@ -104,8 +118,37 @@ class BuildBulk(CellParameters):
         else:
             self.calc_value_list[nbands_index] = self.get_nbands()
 
+
+    def __set_basepath__(self):
+        """Set self.basepath attribute.
+
+        #HACK I copied this from the workflow class
+        Both of the workflow class and this one need to set the basepath
+
+        basepath will be root dir for jobs
+        """
+        basepath_ext = self.__basepath_ext__
+        TRI_PATH = self.__tri_path__
+        username = self.__username__
+
+        if basepath_ext is None:
+            basepath = os.path.join(
+                TRI_PATH,
+                'model/vasp/1/u/{}'.format(username))
+        else:
+            basepath = os.path.join(
+                TRI_PATH,
+                'model/vasp/1/u/{}'.format(username),
+                basepath_ext)
+
+        if not os.path.exists(basepath):
+            os.makedirs(basepath)
+
+        self.basepath = basepath
+
+
     def submit_calculation(self):
-        """Submit calculation for unique structure. 
+        """Submit calculation for unique structure.
         First the execution path is set, then the initial POSCAR and models.py
         is written to the directory.
 

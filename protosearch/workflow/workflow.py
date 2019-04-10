@@ -3,7 +3,7 @@ import json
 import subprocess
 import ase
 from ase.io import read
-import bulk_enumerator as be
+# import bulk_enumerator as be  # Not used
 from build_bulk.build_bulk import BuildBulk
 from protosearch.utils.standards import Standards
 from .prototype_db import PrototypeSQL
@@ -12,13 +12,55 @@ from .classification import get_classification
 
 class Workflow(PrototypeSQL):
 
-    def __init__(self):
+    def __init__(self,
+        basepath_ext=None,
+        ):
+        """Setup Workflow class instance.
+
+        Parameters
+        ----------
+        basepath_ext: <str>
+            Root directory in which to place and run jobs.
+            Model AWS folder structure:
+              `$TRI_PATH/model/vasp/1/u/<username>`
+            'basepath_ext' will be appended to end of path
+              '$TRI_PATH/model/vasp/1/u/<username>/<basepath_ext>'
+        """
+        self.__basepath_ext__ = basepath_ext
+
         super().__init__()
-        TRI_PATH = os.environ['TRI_PATH']
-        username = os.environ['TRI_USERNAME']
-        self.basepath = TRI_PATH + '/model/vasp/1/u/{}'.format(username)
+
+        self.__tri_path__ = os.environ['TRI_PATH']
+        self.__username__ = os.environ["TRI_USERNAME"]
+
+        self.__set_basepath__()
 
         subprocess.call('trisync', cwd=self.basepath)
+
+    def __set_basepath__(self):
+        """Set self.basepath attribute.
+
+        basepath will be root dir for jobs
+        """
+        basepath_ext = self.__basepath_ext__
+        TRI_PATH = self.__tri_path__
+        username = self.__username__
+
+        if basepath_ext is None:
+            basepath = os.path.join(
+                TRI_PATH,
+                'model/vasp/1/u/{}'.format(username))
+        else:
+            basepath = os.path.join(
+                TRI_PATH,
+                'model/vasp/1/u/{}'.format(username),
+                basepath_ext)
+
+        if not os.path.exists(basepath):
+            os.makedirs(basepath)
+
+        self.basepath = basepath
+
 
     def collect(self):
         self.check_submissions()
@@ -26,11 +68,21 @@ class Workflow(PrototypeSQL):
 
     def submit(self, prototype, ncpus=None, calc_parameters=None):
 
+        # TODO This breaks if `ncpus` is passed as `None`
+        # I'm not sure but I think that the correct way to pass args here
+        # would be to do:
+        # BB = BuildBulk(prototype['spacegroup'],
+        #                prototype['wyckoffs'],
+        #                prototype['species'],
+        #                **kwargs)
+        # This way the default values for the kwargs are preserved
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
                        prototype['species'],
                        ncpus=ncpus,
-                       calc_parameters=calc_parameters)
+                       calc_parameters=calc_parameters,
+                       basepath_ext=self.__basepath_ext__
+                       )
 
         BB.submit_calculation()
 
@@ -120,9 +172,12 @@ class Workflow(PrototypeSQL):
                             #data = json.dumps({'error': message})
                             # print(data)
 
-                        self.ase_db.update(id=calcid,
-                                           **key_value_pairs,
-                                           data={'error': message})
+                        self.ase_db.update(
+                            id=calcid,
+                            data={'error': message},
+                            **key_value_pairs,
+                            )
+
                         errored += 1
                         continue
 
