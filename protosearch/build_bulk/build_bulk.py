@@ -1,10 +1,8 @@
-import sys
 import os
 import io
 import subprocess
+import shlex
 
-import ase
-from ase.calculators.vasp import Vasp
 from ase.io.vasp import read_vasp
 import bulk_enumerator as be
 
@@ -12,6 +10,7 @@ from protosearch.utils.standards import CellStandards
 from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.calculators.vasp import VaspModel
 from protosearch.calculators.calculator import get_calculator
+
 from .cell_parameters import CellParameters
 
 from protosearch import __version__ as version
@@ -59,8 +58,8 @@ class BuildBulk(CellParameters):
                  ncpus=1,
                  queue='small',
                  calculator='vasp',
-                 calc_parameters={},
-                 cell_parameters={}
+                 calc_parameters=None,
+                 cell_parameters=None
                  ):
 
         super().__init__(spacegroup=spacegroup,
@@ -86,7 +85,8 @@ class BuildBulk(CellParameters):
         self.queue = queue
 
         self.calc_parameters = calc_parameters
-        self.cell_parameters = self.get_parameter_estimate(cell_parameters)
+        master_parameters = cell_parameters or {}
+        self.cell_parameters = self.get_parameter_estimate(master_parameters)
 
         if self.cell_parameters:
             self.cell_param_list = []
@@ -122,16 +122,15 @@ class BuildBulk(CellParameters):
 
         self.set_execution_path()
         self.write_poscar(self.excpath + '/initial.POSCAR')
-        self.write_model(self.excpath + '/model.py')
+        self.write_model(self.excpath)
 
         parameterstr_list = ['{}'.format(param)
                              for param in self.calc_value_list]
         parameterstr = '/' + '/'.join(parameterstr_list)
 
-        subprocess.call(
-            ('trisub -p {} -q {} -c {}'.
-             format(parameterstr, self.queue, self.ncpus)
-             ).split(), cwd=self.excpath)
+        command = shlex.split('trisub -p {} -q {} -c {}'.format(
+            parameterstr, self.queue, self.ncpus))
+        subprocess.call(command, cwd=self.excpath)
 
     def write_poscar(self, filepath):
         """Write POSCAR to specified file"""
@@ -182,5 +181,5 @@ class BuildBulk(CellParameters):
                          symbols,
                          self.ncpus).get_model()
 
-        with open(filepath, 'w') as f:
+        with open(filepath + '/model.py', 'w') as f:
             f.write(modelstr)

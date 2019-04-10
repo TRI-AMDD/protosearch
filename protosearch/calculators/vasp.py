@@ -7,14 +7,15 @@ class VaspModel:
                  symbols,
                  ncpus):
 
-        self.calc_parameters = calc_parameters
+        self.calc_parameters = calc_parameters or {}
         self.natoms = len(symbols)
         self.symbols = set(symbols)
         self.ncpus = ncpus
         self.setups = {}
         for symbol in symbols:
             if symbol in VaspStandards.paw_potentials:
-                self.setups.update({symbol: Standards.paw_potentials[symbol]})
+                self.setups.update({symbol:
+                                    VaspStandards.paw_potentials[symbol]})
 
         self.calc_value_list = []
         for param in VaspStandards.sorted_calc_parameters:

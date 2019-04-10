@@ -4,8 +4,8 @@ import subprocess
 import ase
 from ase.io import read
 import bulk_enumerator as be
-from build_bulk.build_bulk import BuildBulk
-from protosearch.utils.standards import Standards
+from protosearch.build_bulk.build_bulk import BuildBulk
+from protosearch.utils.standards import VaspStandards
 from .prototype_db import PrototypeSQL
 from .classification import get_classification
 
@@ -53,7 +53,7 @@ class Workflow(PrototypeSQL):
 
         prototypes = self.select(**selection)
 
-        for prototype in prototype:
+        for prototype in prototypes:
             self.submit(prototype)
 
     def write_submission(self, key_value_pairs):
