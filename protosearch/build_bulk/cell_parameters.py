@@ -168,9 +168,10 @@ class CellParameters:
         sg2 = b2.get_spacegroup()
         w2 = b2.get_wyckoff()
 
-        if not sg2 == self.spacegroup \
-           or not w2 == self.wyckoffs:
+        if not sg2 == self.spacegroup:
             print('Symmetry reduced to {} from {}'.format(sg2, self.spacegroup))
+            return False
+        if not w2 == self.wyckoffs:
             print('Wyckoffs reduced to {} from {}'.format(w2, self.wyckoffs))
             return False
 
