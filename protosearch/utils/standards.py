@@ -31,7 +31,8 @@ class VaspStandards():
                        'algo': 'Fast',  # optimization algorithm
                        'lwave': False,  # save wavefunctions or not
                        'ldau': True,  # USE U
-                       'lmaxmix': 4}
+                       'lmaxmix': 4,
+                       'ldautype': 2}
 
     # parameters are submitted as an integer,
     # that will be multiplied by the standard below

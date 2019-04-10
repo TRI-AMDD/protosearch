@@ -65,22 +65,18 @@ class CellParameters:
         """
 
         cell_parameters = self.parameter_guess
-        print(cell_parameters, master_parameters)
         cell_parameters.update(master_parameters)
 
         if self.coor_parameters:
             if not np.all([c in master_parameters for c in self.coor_parameters]):
-                print('HEP')
                 coor_guess = self.get_wyckoff_coordinates()
                 cell_parameters.update(coor_guess)
         if self.angle_parameters:
             if not np.all([c in master_parameters for c in self.angle_parameters]):
-                print('HEP2')
                 angle_guess = self.get_angles(cell_parameters)
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
-            print('HEP3')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)

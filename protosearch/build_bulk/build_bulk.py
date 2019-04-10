@@ -11,6 +11,7 @@ import bulk_enumerator as be
 from protosearch.utils.standards import CellStandards
 from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.calculators.vasp import VaspModel
+from protosearch.calculators.calculator import get_calculator
 from .cell_parameters import CellParameters
 
 from protosearch import __version__ as version
@@ -69,6 +70,8 @@ class BuildBulk(CellParameters):
         assert (0 < spacegroup < 231 and isinstance(spacegroup, int)), \
             'Spacegroup must be an integer between 1 and 230'
 
+        self.poscar = None
+        self.atoms = None
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
@@ -93,8 +96,6 @@ class BuildBulk(CellParameters):
                 self.cell_value_list += [self.cell_parameters[param]]
                 self.cell_param_list += [param]
 
-            #self.poscar = self.get_poscar()
-            #
 
     def get_poscar(self):
         """Get POSCAR structure file from the Enumerator """
@@ -174,10 +175,13 @@ class BuildBulk(CellParameters):
         """ Write model.py"""
         if not self.atoms:
             self.atoms = read_vasp(io.StringIO(self.poscar))
-        symbols = set(self.atoms.symbols)
+        symbols = self.atoms.symbols
         Calculator = get_calculator(self.calculator)
 
-        modelstr = Calculator.get_model(calc_parameters, symbol)
+        modelstr, self.calc_value_list \
+            = Calculator(self.calc_parameters,
+                         symbols,
+                         self.ncpus).get_model()
 
         with open(filepath, 'w') as f:
             f.write(modelstr)
