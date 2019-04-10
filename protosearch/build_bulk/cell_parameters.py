@@ -372,7 +372,7 @@ class CellParameters:
             Dm, distances = get_distances(atoms.positions,
                                           cell=atoms.cell, pbc=True)
 
-        soft_limit = 1.2
+        soft_limit = 1.5
         while np.all(distances >= min_distances * soft_limit):
             atoms.set_cell(atoms.cell * 0.9, scale_atoms=True)
             Dm, distances = get_distances(atoms.positions,
