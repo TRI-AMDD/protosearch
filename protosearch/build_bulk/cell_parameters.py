@@ -38,6 +38,7 @@ class CellParameters:
         self.b.set_spacegroup(self.spacegroup)
         self.b.set_wyckoff(self.wyckoffs)
         self.b.set_species(self.species)
+
         self.parameters = self.b.get_parameters()
         self.coor_parameters = []
         self.angle_parameters = []
@@ -53,8 +54,8 @@ class CellParameters:
         self.set_lattice_dof()
         self.parameter_guess = self.initial_guess()
 
-    def get_parameter_estimate(self, master_parameters={}):
-        """ 
+    def get_parameter_estimate(self, master_parameters=None):
+        """
         Optimize lattice parameters for Atoms object generated with the bulk
         Enumerator.
         First wyckoff coordinates are optimized, then the angles, and at last
@@ -66,7 +67,10 @@ class CellParameters:
         """
 
         cell_parameters = self.parameter_guess
-        cell_parameters.update(master_parameters)
+        if master_parameters:
+            master_parameters = clean_parameter_input(master_parameters)
+            cell_parameters.update(master_parameters)
+        atoms = self.get_atoms(fix_parameters=cell_parameters)
 
         if self.coor_parameters:
             if not np.all([c in master_parameters for c in self.coor_parameters]):
@@ -82,6 +86,7 @@ class CellParameters:
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
+
         if self.check_prototype(atoms):
             return cell_parameters
         else:
@@ -203,9 +208,11 @@ class CellParameters:
         for i, p in enumerate(self.coor_parameters):
             parameter_guess.update({p: rand(1)[0] * 0.9})
 
-        parameter_guess_values = []
-        for p in self.parameters:
-            parameter_guess_values += [parameter_guess[p]]
+        self.parameter_guess = parameter_guess
+        atoms = self.get_atoms(parameter_guess)
+        natoms = atoms.get_number_of_atoms()
+
+        parameter_guess.update({'a': mean_radii * 4 * natoms ** (1 / 3)})
 
         return parameter_guess
 
@@ -392,3 +399,15 @@ class CellParameters:
                 fix_parameters.update({param: new_parameters[i]})
 
         return fix_parameters
+
+
+def clean_parameter_input(cell_parameters):
+    if 'a' in cell_parameters:
+        a = cell_parameters['a']
+        for l_c in ['b', 'c']:
+            if l_c in cell_parameters:
+                l = cell_parameters[l_c]
+                del cell_parameters[l_c]
+                cell_parameters.update({l_c + '/a': l/a})
+
+    return cell_parameters
