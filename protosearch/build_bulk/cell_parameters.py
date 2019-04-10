@@ -2,6 +2,7 @@ import io
 import numpy as np
 from numpy.random import rand
 import ase
+from ase import visualize
 from ase.geometry import get_distances, cell_to_cellpar, cellpar_to_cell
 from ase.data import atomic_numbers as a_n
 from ase.data import covalent_radii as cradii
@@ -77,6 +78,7 @@ class CellParameters:
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
+            print('optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
@@ -134,7 +136,9 @@ class CellParameters:
         with parameters specified in `fix_parameters`. If all parameters
         are not provided, a very rough estimate will be applied.
         """
-        self.parameter_guess.update(fix_parameters)
+
+        if fix_parameters:
+            self.parameter_guess.update(fix_parameters)
 
         parameter_guess_values = []
         for p in self.parameters:
@@ -360,7 +364,7 @@ class CellParameters:
             Dm, distances = get_distances(atoms.positions,
                                           cell=atoms.cell, pbc=True)
 
-        soft_limit = 1.5
+        soft_limit = 1.2
         while np.all(distances >= min_distances * soft_limit):
             atoms.set_cell(atoms.cell * 0.9, scale_atoms=True)
             Dm, distances = get_distances(atoms.positions,
