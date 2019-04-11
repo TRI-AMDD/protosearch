@@ -82,7 +82,6 @@ class CellParameters:
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
-            print('optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
@@ -229,8 +228,6 @@ class CellParameters:
 
         atoms = self.get_atoms()
 
-        atoms *= (2, 2, 2)
-
         # get triangle of matrix without diagonal
         idx = np.triu_indices(len(atoms), 1)
         Dm, distances = get_distances(
@@ -258,7 +255,7 @@ class CellParameters:
                     temp_parameters = fix_parameters.copy()
                     temp_parameters.update({coor_param: cptest})
                     try:
-                        atoms = self.get_atoms(temp_parameters) * (2, 2, 2)
+                        atoms = self.get_atoms(temp_parameters)
                     except:
                         continue
 
@@ -350,12 +347,13 @@ class CellParameters:
         sum of the covalent radii. 
         """
 
+        print('Optimizing lattice constants')
         if not fix_parameters:
             fix_parameters = self.parameter_guess
 
         atoms = self.get_atoms(fix_parameters)
+        natoms = atoms.get_number_of_atoms()
         cell0 = atoms.cell  # initial cell
-        atoms *= (2, 2, 2)
 
         Dm, distances = get_distances(
             atoms.positions, cell=atoms.cell, pbc=True)
@@ -365,19 +363,17 @@ class CellParameters:
         M = covalent_radii * np.ones([len(atoms), len(atoms)])
 
         min_distances = (M + M.T) * proximity
+        idx = np.triu_indices(len(atoms), 1)
         np.fill_diagonal(min_distances, 0)
 
-        while np.any(distances < min_distances * 1.2):
-            atoms.set_cell(atoms.cell * 1.1, scale_atoms=True)
-            Dm, distances = get_distances(atoms.positions,
-                                          cell=atoms.cell, pbc=True)
+        # scale up or down
+        soft_limit = 0.9 ** -2
+        scale = np.min(distances[idx] / min_distances[idx] / soft_limit)
+        atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
 
-        soft_limit = 1.5
-        while np.all(distances >= min_distances * soft_limit):
-            atoms.set_cell(atoms.cell * 0.9, scale_atoms=True)
-            Dm, distances = get_distances(atoms.positions,
-                                          cell=atoms.cell, pbc=True)
-
+        #if atoms
+        Dm, distances = get_distances(atoms.positions,
+                                      cell=atoms.cell, pbc=True)
         hard_limit = soft_limit
         while np.all(distances >= min_distances):
             for direction in self.d_o_f:
@@ -389,7 +385,7 @@ class CellParameters:
                     Dm, distances = get_distances(atoms.positions,
                                                   cell=atoms.cell, pbc=True)
 
-        cell = atoms.cell / 2
+        cell = atoms.cell
 
         new_parameters = cell_to_cellpar(cell)
         new_parameters[1:3] /= new_parameters[0]
@@ -398,7 +394,6 @@ class CellParameters:
                                    'alpha', 'beta', 'gamma']):
             if param in self.parameters:
                 fix_parameters.update({param: new_parameters[i]})
-
         return fix_parameters
 
 
