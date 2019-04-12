@@ -1,19 +1,9 @@
 import os
 import io
-import subprocess
-import shlex
-
 from ase.io.vasp import read_vasp
 import bulk_enumerator as be
 
-from protosearch.utils.standards import CellStandards
-from protosearch.workflow.prototype_db import PrototypeSQL
-from protosearch.calculators.vasp import VaspModel
-from protosearch.calculators.calculator import get_calculator
-
 from .cell_parameters import CellParameters
-
-from protosearch import __version__ as version
 
 
 class BuildBulk(CellParameters):
@@ -22,43 +12,25 @@ class BuildBulk(CellParameters):
     Bulk prototype enumerator developed by A. Jain described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
-    The module takes the following parameters:
+    Parameters:
 
     spacegroup: int
-       int between 1 and 230
+        int between 1 and 230
     wyckoffs: list
-       wyckoff positions, for example ['a', 'a', 'b', 'c']
+        wyckoff positions, for example ['a', 'a', 'b', 'c']
     species: list
-       atomic species, for example ['Fe', 'O', 'O', 'O']
-    ncpus: int
-       number of cpus on AWS to use, default: 1
-    queue: 'small', 'medium',
-       Queue specificatin for AWS
-    calculator: 'vaps' or 'espresso'
-    calc_parameters: dict
-       Optional specification of parameters, such as {ecut: 300}. 
-       If not specified, the parameter standards given in 
-       ./utils/standards.py will be applied
+        atomic species, for example ['Fe', 'O', 'O', 'O']
     cell_parameters: dict
-       Optional specification of cell parameters, 
-       such as {'a': 3.7, 'alpha': 75}.
-       Otherwise a fair guees for parameters will be provided by the
-       CellParameters module.
-
-    The following environment valiables must be set in order to submit to AWS:
-
-    TRI_PATH: Your TRI sync directory, which is usually at ~/matr.io
-    TRI_USERNAME: Your TRI username
+        Optional specification of cell parameters, 
+        such as {'a': 3.7, 'alpha': 75}.
+        Otherwise a fair guees for parameters will be provided by the
+        CellParameters module.
     """
 
     def __init__(self,
                  spacegroup,
                  wyckoffs,
                  species,
-                 ncpus=1,
-                 queue='small',
-                 calculator='vasp',
-                 calc_parameters=None,
                  cell_parameters=None
                  ):
 
@@ -70,21 +42,13 @@ class BuildBulk(CellParameters):
             'Spacegroup must be an integer between 1 and 230'
 
         self.poscar = None
-        self.atoms = None
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
 
         TRI_PATH = os.environ['TRI_PATH']
         username = os.environ['TRI_USERNAME']
-        self.calculator = calculator
-        self.basepath = TRI_PATH + '/model/{}/1/u/{}'.format(calculator,
-                                                             username)
 
-        self.ncpus = ncpus
-        self.queue = queue
-
-        self.calc_parameters = calc_parameters
         master_parameters = cell_parameters or {}
         self.cell_parameters = self.get_parameter_estimate(master_parameters)
 
@@ -96,12 +60,10 @@ class BuildBulk(CellParameters):
                 self.cell_value_list += [self.cell_parameters[param]]
                 self.cell_param_list += [param]
 
-
-            self.poscar = self.get_poscar()
-            self.atoms = read_vasp(io.StringIO(self.poscar))
-
     def get_poscar(self):
         """Get POSCAR structure file from the Enumerator """
+        if not self.cell_parameters:
+            return None
         b = be.bulk.BULK()
         b.set_spacegroup(self.spacegroup)
         b.set_wyckoff(self.wyckoffs)
@@ -110,76 +72,16 @@ class BuildBulk(CellParameters):
         b.set_parameter_values(self.cell_param_list, self.cell_value_list)
         self.prototype_name = b.get_name()
 
-        return b.get_primitive_poscar()
+        self.poscar = b.get_primitive_poscar()
 
-    def submit_calculation(self):
-        """Submit calculation for unique structure. 
-        First the execution path is set, then the initial POSCAR and models.py
-        is written to the directory.
+        return self.poscar
 
-        The calculation is submitted as a parametrized model with trisub.
-        """
+    def get_atoms_from_poscar(self):
+        if not self.cell_parameters:
+            return None
+        if not self.poscar:
+            poscar = self.get_poscar()
 
-        self.set_execution_path()
-        self.write_poscar(self.excpath + '/initial.POSCAR')
-        self.write_model(self.excpath)
+        atoms = read_vasp(io.StringIO(self.poscar))
 
-        parameterstr_list = ['{}'.format(param)
-                             for param in self.calc_value_list]
-        parameterstr = '/' + '/'.join(parameterstr_list)
-
-        command = shlex.split('trisub -p {} -q {} -c {}'.format(
-            parameterstr, self.queue, self.ncpus))
-        subprocess.call(command, cwd=self.excpath)
-
-    def write_poscar(self, filepath):
-        """Write POSCAR to specified file"""
-        with open(filepath, 'w') as f:
-            f.write(self.poscar)
-
-    def set_execution_path(self):
-        """Create a unique path for each structure for submission """
-
-        variables = ['BB']  # start BuildBulk identification
-        variables = [version.replace('.', '')]
-        variables += ['PT']  # specify prototype for species
-        variables += [str(self.spacegroup)]
-
-        for spec, wy_spec in zip(self.species, self.wyckoffs):
-            variables += [spec + wy_spec]
-
-        self.p_name = ''.join(variables[3:])
-
-        variables += ['CP']  # Cell Parameters
-        for cell_key, cell_value in zip(self.cell_param_list,
-                                        self.cell_value_list):
-
-            variables += ['{}{}'.format(cell_key, cell_value)]
-
-        calc_name = ''.join(variables).replace('c/a', 'c').replace('b/a', 'b').\
-            replace('.', 'D').replace('-', 'M')
-
-        self.excroot = '{}/{}'.format(self.basepath, calc_name)
-        if not os.path.isdir(self.excroot):
-            os.mkdir(self.excroot)
-
-        calc_revision = 1
-        path_exists = True
-        while os.path.isdir('{}/_{}'.format(self.excroot, calc_revision)):
-            calc_revision += 1
-
-        self.excpath = '{}/_{}'.format(self.excroot, calc_revision)
-        os.mkdir(self.excpath)
-
-    def write_model(self, filepath):
-        """ Write model.py"""
-        symbols = self.atoms.symbols
-        Calculator = get_calculator(self.calculator)
-
-        modelstr, self.calc_value_list \
-            = Calculator(self.calc_parameters,
-                         symbols,
-                         self.ncpus).get_model()
-
-        with open(filepath + '/model.py', 'w') as f:
-            f.write(modelstr)
+        return atoms

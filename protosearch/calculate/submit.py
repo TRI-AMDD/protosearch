@@ -1,11 +1,45 @@
 import os
-from protosearch import __version__ as version
-from protosearch.build_bulk.classification import get_classification
+import shlex
+import subprocess
 
+from protosearch import __version__ as version
+from protosearch.utils import get_basepath
+from protosearch.build_bulk.classification import get_classification
 from .calculator import get_calculator
 from .vasp import get_poscar_from_atoms
 
+
 class TriSubmit():
+    """
+    Set up (VASP) calculations on TRI-AWS for bulk structure created with the
+    Bulk prototype enumerator developed by A. Jain described in:
+    A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
+
+    Parameters:
+
+    atoms: ASE Atoms object
+    ncpus: int
+        number of cpus on AWS to use, default: 1
+    queue: 'small', 'medium', etc
+        Queue specificatin for AWS
+    calculator: str
+        'vaps' or 'espresso'
+    calc_parameters: dict
+        Optional specification of parameters, such as {ecut: 300}. 
+        If not specified, the parameter standards given in 
+        ./utils/standards.py will be applied
+    basepath: str or None
+        Path for job submission of in TRI filesync (s3) directory
+        F.ex: '~/matr.io//model/<calculator>/1/u/<username>
+    basepath_ext: str or None
+        Extention to job submission path. Also works when specifying
+        the environment variables explained below.
+
+    Set the following environment valiables in order to set the
+    job submission path automatically:
+        TRI_PATH: Your TRI sync directory, which is usually at ~/matr.io
+        TRI_USERNAME: Your TRI username
+    """
 
     def __init__(self,
                  atoms,
@@ -13,12 +47,13 @@ class TriSubmit():
                  queue='small',
                  calculator='vasp',
                  calc_parameters=None,
+                 basepath=None,
                  basepath_ext=None
                  ):
 
-        self.atoms = atoms        
+        self.atoms = atoms
         self.poscar = get_poscar_from_atoms(atoms)
-        
+
         prototype, self.cell_parameters = get_classification(atoms)
         self.spacegroup = prototype['spacegroup']
         self.wyckoffs = prototype['wyckoffs']
@@ -28,20 +63,23 @@ class TriSubmit():
         for param in self.cell_parameters:
             self.cell_value_list += [self.cell_parameters[param]]
             self.cell_param_list += [param]
-        
-        TRI_PATH = os.environ['TRI_PATH']
-        username = os.environ['TRI_USERNAME']
+
+        if basepath:
+            self.basepath = basepath
+            if basepath_ext:
+                self.basepath += '/{}'.format(basepath_ext)
+            assert calculator in self.basepath, \
+                'Your job submission path must match the calculator'
+        else:
+            self.basepathget_basepath(calculator=calculator,
+                                      ext=basepath_ext)
+
         self.calculator = calculator
-        self.basepath = TRI_PATH + '/model/{}/1/u/{}'.format(calculator,
-                                                             username)        
-        if basepath_ext:
-            self.basepath += '/' + basepath_ext
         self.ncpus = ncpus
         self.queue = queue
 
         self.calc_parameters = calc_parameters
-        
-    
+
     def submit_calculation(self):
         """Submit calculation for unique structure. 
         First the execution path is set, then the initial POSCAR and models.py
