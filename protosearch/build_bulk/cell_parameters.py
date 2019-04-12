@@ -67,6 +67,7 @@ class CellParameters:
         """
 
         cell_parameters = self.parameter_guess
+        master_parameters = master_parameters or {}
         if master_parameters:
             master_parameters = clean_parameter_input(master_parameters)
             cell_parameters.update(master_parameters)
@@ -82,7 +83,6 @@ class CellParameters:
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
-            print('optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
@@ -150,7 +150,7 @@ class CellParameters:
             parameter_guess_values += [self.parameter_guess[p]]
 
         self.b.set_parameter_values(self.parameters, parameter_guess_values)
-        poscar = self.b.get_std_poscar()
+        poscar = self.b.get_primitive_poscar()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
@@ -228,14 +228,11 @@ class CellParameters:
         """
 
         atoms = self.get_atoms()
-
-        atoms *= (2, 2, 2)
+        natoms = atoms.get_number_of_atoms()
 
         # get triangle of matrix without diagonal
-        idx = np.triu_indices(len(atoms), 1)
-        Dm, distances = get_distances(
-            atoms.positions, cell=atoms.cell, pbc=True)
-        R0 = np.sum(1 / (distances[idx] ** 12))  # initial repulsion
+        distances = get_interatomic_distances(atoms)
+        R0 = np.sum(1 / (distances ** 12))  # initial repulsion
         r0 = R0
         fix_parameters = {}
         for coor_param in self.coor_parameters:
@@ -246,30 +243,29 @@ class CellParameters:
         direction = 1
         Diff = 1
         j = 1
-        while Diff > 0.01:  # Outer convergence criteria
+        while Diff > 0.05:  # Outer convergence criteria
             print('Wyckoff coordinate iteration {}, conv: {}'.format(j, Diff))
             # Change one parameter at the time
             for coor_param in self.coor_parameters:
                 cp0 = self.parameter_guess[coor_param]
                 diff = 1
                 step_size = 1
-                while diff > 0.01:  # Inner loop convergence criteria
+                k = 1
+                while diff > 0.05 and k < 10:  # Inner loop convergence criteria
                     cptest = cp0 + direction * 0.2 / j * step_size
                     temp_parameters = fix_parameters.copy()
                     temp_parameters.update({coor_param: cptest})
                     try:
-                        atoms = self.get_atoms(temp_parameters) * (2, 2, 2)
+                        atoms = self.get_atoms(temp_parameters)
                     except:
                         continue
+                    distances = get_interatomic_distances(atoms)
 
-                    Dm, distances = get_distances(atoms.positions,
-                                                  cell=atoms.cell,
-                                                  pbc=True)
-
-                    r = np.sum(1 / (distances[idx] ** 12))
+                    r = np.sum(1 / (distances ** 12))
                     diff = abs(r - r0) / r0
 
                     if r < r0:  # Lower repulsion - apply change
+                        k += 1
                         cp0 = cptest
                         self.parameter_guess.update({coor_param: cp0})
                         fix_parameters.update({coor_param: cp0})
@@ -291,6 +287,8 @@ class CellParameters:
         """ 
         Get an estimate for unit cell angles. The angles are optimized by 
         minimizing the volume of the unit cell.
+        ** Work in progess
+
         """
         fix_parameters.update(self.fixed_angles)
         atoms = self.get_atoms(fix_parameters)
@@ -354,43 +352,31 @@ class CellParameters:
             fix_parameters = self.parameter_guess
 
         atoms = self.get_atoms(fix_parameters)
-        cell0 = atoms.cell  # initial cell
-        atoms *= (2, 2, 2)
+        cell = atoms.cell
 
-        Dm, distances = get_distances(
-            atoms.positions, cell=atoms.cell, pbc=True)
+        distances = get_interatomic_distances(atoms)
 
         covalent_radii = np.array([cradii[n] for n in atoms.numbers])
-
         M = covalent_radii * np.ones([len(atoms), len(atoms)])
-
         min_distances = (M + M.T) * proximity
-        np.fill_diagonal(min_distances, 0)
 
-        while np.any(distances < min_distances * 1.2):
-            atoms.set_cell(atoms.cell * 1.1, scale_atoms=True)
-            Dm, distances = get_distances(atoms.positions,
-                                          cell=atoms.cell, pbc=True)
+        # scale up or down
+        soft_limit = 1.2
+        scale = np.min(distances / min_distances / soft_limit)
+        atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
 
-        soft_limit = 1.5
-        while np.all(distances >= min_distances * soft_limit):
-            atoms.set_cell(atoms.cell * 0.9, scale_atoms=True)
-            Dm, distances = get_distances(atoms.positions,
-                                          cell=atoms.cell, pbc=True)
-
+        distances = get_interatomic_distances(atoms)
         hard_limit = soft_limit
-        while np.all(distances >= min_distances):
+        while np.all(distances > min_distances):
             for direction in self.d_o_f:
-                hard_limit *= 0.95
-                while np.all(distances >= min_distances * hard_limit):
+                hard_limit *= 0.90
+                while np.all(distances > min_distances * hard_limit):
                     cell = atoms.cell.copy()
-                    cell[direction, :] *= 0.9
+                    cell[direction, :] *= 0.90
                     atoms.set_cell(cell, scale_atoms=True)
-                    Dm, distances = get_distances(atoms.positions,
-                                                  cell=atoms.cell, pbc=True)
+                    distances = get_interatomic_distances(atoms)
 
-        cell = atoms.cell / 2
-
+        cell = atoms.cell
         new_parameters = cell_to_cellpar(cell)
         new_parameters[1:3] /= new_parameters[0]
 
@@ -398,7 +384,6 @@ class CellParameters:
                                    'alpha', 'beta', 'gamma']):
             if param in self.parameters:
                 fix_parameters.update({param: new_parameters[i]})
-
         return fix_parameters
 
 
@@ -412,3 +397,15 @@ def clean_parameter_input(cell_parameters):
                 cell_parameters.update({l_c + '/a': l/a})
 
     return cell_parameters
+
+
+def get_interatomic_distances(atoms):
+
+    Dm, distances = get_distances(atoms.positions,
+                                  cell=atoms.cell, pbc=True)
+
+    min_cell_width = np.min(np.linalg.norm(atoms.cell, axis=1))
+    min_cell_width *= np.ones(len(atoms))
+    np.fill_diagonal(distances, min_cell_width)
+
+    return distances
