@@ -67,6 +67,7 @@ class CellParameters:
         """
 
         cell_parameters = self.parameter_guess
+        master_parameters = master_parameters or {}
         if master_parameters:
             master_parameters = clean_parameter_input(master_parameters)
             cell_parameters.update(master_parameters)
@@ -149,7 +150,7 @@ class CellParameters:
             parameter_guess_values += [self.parameter_guess[p]]
 
         self.b.set_parameter_values(self.parameters, parameter_guess_values)
-        poscar = self.b.get_std_poscar()
+        poscar = self.b.get_primitive_poscar()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
@@ -230,10 +231,8 @@ class CellParameters:
         natoms = atoms.get_number_of_atoms()
 
         # get triangle of matrix without diagonal
-        idx = np.triu_indices(len(atoms), 1)
-        Dm, distances = get_distances(
-            atoms.positions, cell=atoms.cell, pbc=True)
-        R0 = np.sum(1 / (distances[idx] ** 12))  # initial repulsion
+        distances = get_interatomic_distances(atoms)
+        R0 = np.sum(1 / (distances ** 12))  # initial repulsion
         r0 = R0
         fix_parameters = {}
         for coor_param in self.coor_parameters:
@@ -244,14 +243,15 @@ class CellParameters:
         direction = 1
         Diff = 1
         j = 1
-        while Diff > 0.01:  # Outer convergence criteria
+        while Diff > 0.05:  # Outer convergence criteria
             print('Wyckoff coordinate iteration {}, conv: {}'.format(j, Diff))
             # Change one parameter at the time
             for coor_param in self.coor_parameters:
                 cp0 = self.parameter_guess[coor_param]
                 diff = 1
                 step_size = 1
-                while diff > 0.01:  # Inner loop convergence criteria
+                k = 1
+                while diff > 0.05 and k < 10:  # Inner loop convergence criteria
                     cptest = cp0 + direction * 0.2 / j * step_size
                     temp_parameters = fix_parameters.copy()
                     temp_parameters.update({coor_param: cptest})
@@ -259,15 +259,13 @@ class CellParameters:
                         atoms = self.get_atoms(temp_parameters)
                     except:
                         continue
+                    distances = get_interatomic_distances(atoms)
 
-                    Dm, distances = get_distances(atoms.positions,
-                                                  cell=atoms.cell,
-                                                  pbc=True)
-
-                    r = np.sum(1 / (distances[idx] ** 12))
+                    r = np.sum(1 / (distances ** 12))
                     diff = abs(r - r0) / r0
 
                     if r < r0:  # Lower repulsion - apply change
+                        k += 1
                         cp0 = cptest
                         self.parameter_guess.update({coor_param: cp0})
                         fix_parameters.update({coor_param: cp0})
@@ -289,6 +287,8 @@ class CellParameters:
         """ 
         Get an estimate for unit cell angles. The angles are optimized by 
         minimizing the volume of the unit cell.
+        ** Work in progess
+
         """
         fix_parameters.update(self.fixed_angles)
         atoms = self.get_atoms(fix_parameters)
@@ -348,7 +348,6 @@ class CellParameters:
         sum of the covalent radii. 
         """
 
-        print('Optimizing lattice constants')
         if not fix_parameters:
             fix_parameters = self.parameter_guess
 
