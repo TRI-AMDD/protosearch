@@ -10,10 +10,10 @@ from protosearch.calculate.submit import TriSubmit
 class TriSubmitTest(unittest.TestCase):
     def setUp(self):
         self.bb_iron = BuildBulk(225, ['a'], ["Cu"])
-        self.submitter = TriSubmit(self.bb_iron.atoms)
+        self.submitter = TriSubmit(self.bb_iron.atoms,
+                                   basepath_ext='tests')
         self.pwd = os.getcwd()
         self.tempdir = tempfile.mkdtemp()
-        self.submitter.basepath = self.tempdir
         os.chdir(self.tempdir)
 
     def tearDown(self):
@@ -30,6 +30,10 @@ class TriSubmitTest(unittest.TestCase):
         self.submitter.write_model('.')
         with open('model.py') as f:
             model_text = f.readlines()
+
+    def test_submit(self):
+        self.submitter.submit_calculation()
+
 
 if __name__ == '__main__':
     unittest.main()

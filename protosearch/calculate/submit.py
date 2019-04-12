@@ -71,8 +71,8 @@ class TriSubmit():
             assert calculator in self.basepath, \
                 'Your job submission path must match the calculator'
         else:
-            self.basepathget_basepath(calculator=calculator,
-                                      ext=basepath_ext)
+            self.basepath = get_basepath(calculator=calculator,
+                                         ext=basepath_ext)
 
         self.calculator = calculator
         self.ncpus = ncpus
