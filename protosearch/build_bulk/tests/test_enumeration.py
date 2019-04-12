@@ -18,5 +18,6 @@ class EnumerationTest(unittest.TestCase):
     def test_enumeration(self):
         enumeration = Enumeration("Fe2O3", num_start=1, num_end=20)
 
+
 if __name__ == '__main__':
     unittest.main()

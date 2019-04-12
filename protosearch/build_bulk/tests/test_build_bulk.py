@@ -2,13 +2,13 @@ import shutil
 import os
 import tempfile
 import unittest
+import numpy as np
 
 from protosearch.build_bulk.build_bulk import BuildBulk
 
 
 class BuildBulkTest(unittest.TestCase):
     def setUp(self):
-        self.bb_iron = BuildBulk(225, ['a'], ["Cu"])
         self.pwd = os.getcwd()
         self.tempdir = tempfile.mkdtemp()
         os.chdir(self.tempdir)
@@ -17,17 +17,19 @@ class BuildBulkTest(unittest.TestCase):
         os.chdir(self.pwd)
         shutil.rmtree(self.tempdir)
 
-    def test_write_model(self):
-        self.bb_iron.write_model('.')
-        with open('model.py') as f:
-            model_text = f.readlines()
-        pass
+    def test_no_parameters(self):
+        BB = BuildBulk(225, ['a'], ["Cu"])
+        BB.get_poscar()
+        atoms = BB.get_atoms_from_poscar()
+        assert np.isclose(atoms.cell[0, 2], 1.28, rtol=0.01)
 
-    ### nbands function moved to calculator object
-    #def test_get_nbands(self):
-    #    nbands_default = self.bb_iron.get_nbands()
-    #    self.assertEqual(nbands_default, 12)
-
+    def test_set_parameters(self):
+        BB = BuildBulk(225, ['a'], ["Cu"],
+                                 cell_parameters={'a': 5})
+        BB.get_poscar()
+        atoms = BB.get_atoms_from_poscar()
+        assert atoms.cell[0, 2] == 2.5
+        
 
 if __name__ == '__main__':
     unittest.main()
