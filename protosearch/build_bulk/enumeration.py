@@ -2,7 +2,7 @@ import bulk_enumerator as be
 from protosearch.workflow.prototype_db import PrototypeSQL
 
 
-class Enumeration(PrototypeSQL):
+class Enumeration():
 
     def __init__(self,
                  stoichiometry,
@@ -12,18 +12,24 @@ class Enumeration(PrototypeSQL):
                  SG_end=230,
                  num_type='atom'):
         """
-        # TODO: clarify num_start, num_end, num_type
+        Parameters
 
-        Args:
-            stoichiometry (str): chemical formula
-            num_start (int): minimum number of atoms or wyckoff sites?
-            num_end (int): maximum number of atoms or wyckoff sites?
-            SG_start (int): spacegroup number minimum
-            SG_end (int): spacegroup number maximum
-            num_type (int): whether the num is atoms or wyckoff?
+        stoichiometry: str
+            Ratio bewteen elements separated by '_'. 
+            For example: '1_2' or '1_2_3'
+
+        num_start: int
+            minimum number of atoms or wyckoff sites
+        num_end: int
+            maximum number of atoms or wyckoff sites
+        SG_start: int
+           minimum spacegroup number
+        SG_end: int
+           maximum spacegroup number
+        num_type: str 
+            'atom' or 'wyckoff'
         """
 
-        super().__init__()
         self.stoichiometry = stoichiometry
         self.num_start = num_start
         self.num_end = num_end
@@ -53,10 +59,10 @@ class Enumeration(PrototypeSQL):
 
         return enumerations
 
-    def store_enumeration(self):
+    def store_enumeration(self, filename=None):
 
         enumerations = self.get_enumeration()
 
-        with PrototypeSQL() as DB:
+        with PrototypeSQL(filename=filename) as DB:
             for entry in enumerations:
-                self.write_prototype(entry=entry)
+                DB.write_prototype(entry=entry)
