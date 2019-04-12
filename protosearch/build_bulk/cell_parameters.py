@@ -227,6 +227,7 @@ class CellParameters:
         """
 
         atoms = self.get_atoms()
+        natoms = atoms.get_number_of_atoms()
 
         # get triangle of matrix without diagonal
         idx = np.triu_indices(len(atoms), 1)
@@ -352,41 +353,31 @@ class CellParameters:
             fix_parameters = self.parameter_guess
 
         atoms = self.get_atoms(fix_parameters)
-        natoms = atoms.get_number_of_atoms()
-        cell0 = atoms.cell  # initial cell
-
-        Dm, distances = get_distances(
-            atoms.positions, cell=atoms.cell, pbc=True)
-
-        covalent_radii = np.array([cradii[n] for n in atoms.numbers])
-
-        M = covalent_radii * np.ones([len(atoms), len(atoms)])
-
-        min_distances = (M + M.T) * proximity
-        idx = np.triu_indices(len(atoms), 1)
-        np.fill_diagonal(min_distances, 0)
-
-        # scale up or down
-        soft_limit = 0.9 ** -2
-        scale = np.min(distances[idx] / min_distances[idx] / soft_limit)
-        atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
-
-        #if atoms
-        Dm, distances = get_distances(atoms.positions,
-                                      cell=atoms.cell, pbc=True)
-        hard_limit = soft_limit
-        while np.all(distances >= min_distances):
-            for direction in self.d_o_f:
-                hard_limit *= 0.95
-                while np.all(distances >= min_distances * hard_limit):
-                    cell = atoms.cell.copy()
-                    cell[direction, :] *= 0.9
-                    atoms.set_cell(cell, scale_atoms=True)
-                    Dm, distances = get_distances(atoms.positions,
-                                                  cell=atoms.cell, pbc=True)
-
         cell = atoms.cell
 
+        distances = get_interatomic_distances(atoms)
+
+        covalent_radii = np.array([cradii[n] for n in atoms.numbers])
+        M = covalent_radii * np.ones([len(atoms), len(atoms)])
+        min_distances = (M + M.T) * proximity
+
+        # scale up or down
+        soft_limit = 1.2
+        scale = np.min(distances / min_distances / soft_limit)
+        atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
+
+        distances = get_interatomic_distances(atoms)
+        hard_limit = soft_limit
+        while np.all(distances > min_distances):
+            for direction in self.d_o_f:
+                hard_limit *= 0.90
+                while np.all(distances > min_distances * hard_limit):
+                    cell = atoms.cell.copy()
+                    cell[direction, :] *= 0.90
+                    atoms.set_cell(cell, scale_atoms=True)
+                    distances = get_interatomic_distances(atoms)
+
+        cell = atoms.cell
         new_parameters = cell_to_cellpar(cell)
         new_parameters[1:3] /= new_parameters[0]
 
@@ -407,3 +398,15 @@ def clean_parameter_input(cell_parameters):
                 cell_parameters.update({l_c + '/a': l/a})
 
     return cell_parameters
+
+
+def get_interatomic_distances(atoms):
+
+    Dm, distances = get_distances(atoms.positions,
+                                  cell=atoms.cell, pbc=True)
+
+    min_cell_width = np.min(np.linalg.norm(atoms.cell, axis=1))
+    min_cell_width *= np.ones(len(atoms))
+    np.fill_diagonal(distances, min_cell_width)
+
+    return distances
