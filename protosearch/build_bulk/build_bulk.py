@@ -8,8 +8,8 @@ from .cell_parameters import CellParameters
 
 class BuildBulk(CellParameters):
     """
-    Set up Vasp calculations on TRI-AWS for bulk structure created with the
-    Bulk prototype enumerator developed by A. Jain described in:
+    Set up bulk structures with the Bulk prototype enumerator
+    developed by A. Jain described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
     Parameters:
