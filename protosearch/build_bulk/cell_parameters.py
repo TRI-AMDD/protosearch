@@ -243,7 +243,7 @@ class CellParameters:
         direction = 1
         Diff = 1
         j = 1
-        while Diff > 0.05:  # Outer convergence criteria
+        while Diff > 0.05 and j < 11:  # Outer convergence criteria
             print('Wyckoff coordinate iteration {}, conv: {}'.format(j, Diff))
             # Change one parameter at the time
             for coor_param in self.coor_parameters:
