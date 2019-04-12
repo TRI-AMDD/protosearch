@@ -1,7 +1,8 @@
 import io
 import ase
-from ase.io.vasp import read_vasp, write_vasp
 import bulk_enumerator as be
+
+from protosearch.calculate.vasp import get_poscar_from_atoms
 
 
 def get_classification(atoms):
@@ -10,11 +11,9 @@ def get_classification(atoms):
 
     b = be.bulk.BULK()
 
-    poscar = io.StringIO()
-    write_vasp(filename=poscar, atoms=atoms, vasp5=True,
-               long_format=False, direct=True)
+    poscar = get_poscar_from_atoms(atoms)
 
-    b.set_structure_from_file(poscar.getvalue())
+    b.set_structure_from_file(poscar)
     name = b.get_name()
     spacegroup = b.get_spacegroup()
     wyckoffs = b.get_wyckoff()

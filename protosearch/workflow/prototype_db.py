@@ -7,7 +7,8 @@ from ase.db.sqlite import SQLite3Database
 from ase.io import read
 import sqlite3
 
-from .classification import get_classification
+from protosearch.utils import get_basepath
+from protosearch.build_bulk.classification import get_classification
 
 init_commands = [
     """CREATE TABLE prototype (
@@ -45,8 +46,8 @@ class PrototypeSQL:
             assert filename.endswith(
                 '.db'), 'filename should have .db extension'
         else:
-            TRI_PATH = os.environ['TRI_PATH']
-            filename = TRI_PATH + '/prototypes.db'
+            basepath = get_basepath()
+            filename = '/prototypes.db'
         self.filename = filename
         self.initialized = False
         self.default = 'NULL'

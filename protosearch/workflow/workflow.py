@@ -4,19 +4,27 @@ import subprocess
 import ase
 from ase.io import read
 import bulk_enumerator as be
+
+from protosearch.utils import get_basepath
 from protosearch.build_bulk.build_bulk import BuildBulk
+from protosearch.build_bulk.classification import get_classification
 from protosearch.utils.standards import VaspStandards
+from protosearch.calculate.submit import TriSubmit
 from .prototype_db import PrototypeSQL
-from .classification import get_classification
 
 
 class Workflow(PrototypeSQL):
 
-    def __init__(self):
-        super().__init__()
-        TRI_PATH = os.environ['TRI_PATH']
-        username = os.environ['TRI_USERNAME']
-        self.basepath = TRI_PATH + '/model/vasp/1/u/{}'.format(username)
+    def __init__(self,
+                 calculator='vasp',
+                 basepath_ext=None):
+
+        self.basepath = get_basepath(calculator=calculator,
+                                     ext=basepath_ext)
+        db_filename = self.basepath + '/prototypes.db'
+
+        super().__init__(filename=db_filename)
+
         self.collected = False
 
     def _collect(self):
@@ -24,20 +32,24 @@ class Workflow(PrototypeSQL):
             return
         subprocess.call('trisync', cwd=self.basepath)
         self.collected = True
-        #self.check_submissions()
-        #self.rerun_failed_calculations()
+        # self.check_submissions()
+        # self.rerun_failed_calculations()
 
     def submit(self, prototype, ncpus=1, calc_parameters={}):
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
-                       prototype['species'],
-                       ncpus=ncpus,
-                       calc_parameters=calc_parameters)
+                       prototype['species'])
 
-        BB.submit_calculation()
+        atoms = BB.get_atoms_from_poscar()
+        Sub = TriSubmit(atoms=atoms,
+                        ncpus=ncpus,
+                        calc_parameters=calc_parameters,
+                        basepath=self.basepath)
+
+        Sub.submit_calculation()
 
         key_value_pairs = {'p_name': BB.prototype_name,
-                           'path': BB.excpath,
+                           'path': Sub.excpath,
                            'spacegroup': BB.spacegroup,
                            'wyckoffs': json.dumps(BB.wyckoffs),
                            'species': json.dumps(BB.species)}
@@ -92,7 +104,7 @@ class Workflow(PrototypeSQL):
                         param = f.read().lstrip('/').rstrip('\n')
                         print(param)
                         param_values = param.split('/')
-                        for i, param_key in enumerate(Standards.sorted_calc_parameters):
+                        for i, param_key in enumerate(VaspStandards.sorted_calc_parameters):
                             param_dict[param_key] = param_values[i]
 
                     if 'completed' in files:
@@ -109,7 +121,6 @@ class Workflow(PrototypeSQL):
                         atoms = ase.io.read(root + '/initial.POSCAR')
                         prototype, cell_parameters = get_classification(atoms)
 
-                        print(cell_parameters)
                         key_value_pairs.update(prototype)
                         key_value_pairs.update(cell_parameters)
                         key_value_pairs.update(param_dict)
@@ -167,7 +178,7 @@ class Workflow(PrototypeSQL):
             path = d.path + '/simulation'
 
             calc_parameters = {}
-            for param in Standards.sorted_calc_parameters:
+            for param in VaspStandards.sorted_calc_parameters:
                 if d.get(param, None):
                     calc_parameters.update({param: d.get(param)})
 

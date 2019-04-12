@@ -1,5 +1,9 @@
+import io
+from ase.io.vasp import write_vasp
+
 from protosearch.utils.standards import VaspStandards
 from protosearch.utils.valence import VaspValence
+
 
 class VaspModel:
     def __init__(self,
@@ -30,8 +34,8 @@ class VaspModel:
             self.calc_value_list[nbands_index] = self.get_nbands(
                 n_empty=abs(nbands))
         else:
-            self.calc_value_list[nbands_index] = self.get_nbands()            
-                
+            self.calc_value_list[nbands_index] = self.get_nbands()
+
     def get_model(self):
         """
         Construct model string, which uses the ASE interface
@@ -70,7 +74,6 @@ class VaspModel:
 
         modelstr += ')\n\ncalc.calculate(atoms)\n'
         return modelstr, self.calc_value_list
-        
 
     def get_nbands(self, n_empty=5):
         """ get the number of bands from structure, based on the number of
@@ -89,4 +92,11 @@ class VaspModel:
         nbands += nbands % self.ncpus
 
         return nbands
-        
+
+
+def get_poscar_from_atoms(atoms):
+    poscar = io.StringIO()
+    write_vasp(filename=poscar, atoms=atoms, vasp5=True,
+               long_format=False, direct=True)
+
+    return poscar.getvalue()
