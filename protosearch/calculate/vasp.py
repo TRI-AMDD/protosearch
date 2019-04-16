@@ -194,7 +194,6 @@ def get_model_header():
     modelstr = ''
     modelstr = '#!/usr/bin/env python\n\n'
     modelstr += 'from ase.io import read\n' + \
-        'from ase.units import Rydberg as Ry\n' + \
         'from ase.calculators.vasp import Vasp\n\n'
 
     modelstr += "atoms = read('initial.POSCAR')\n\n"
