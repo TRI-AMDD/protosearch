@@ -174,10 +174,10 @@ class VaspModel:
         return nbands
 
     def add_initial_magmoms(self, modelstr):
-        modelstr += 'intial_magmoms = {}\n'.format(self.initial_magmoms)
+        modelstr += 'initial_magmoms = {}\n'.format(self.initial_magmoms)
         modelstr += 'symbols = atoms.symbols\n'
-        modelstr += 'initial_magmom_atoms = [intial_magmoms.get(sym, 0) for sym in symbols]\n'
-        modelstr += 'atoms.set_initial_magnetic_moments(intial_magmom_atoms)\n\n'
+        modelstr += 'initial_magmom_atoms = [initial_magmoms.get(sym, 0) for sym in symbols]\n'
+        modelstr += 'atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n\n'
 
         return modelstr
 
