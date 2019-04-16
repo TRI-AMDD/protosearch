@@ -7,8 +7,9 @@ class VaspStandards():
     # Parameters to that will be tracked in parameterized model
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
-                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave',
-                              'ldau', 'ldautype']
+                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave']
+
+    u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj']
 
     """Parameters are heavily inspired by MP standard settings at
     https://github.com/materialsproject/pymatgen/blob/master/pymatgen/io/vasp/MPRelaxSet.yaml
@@ -32,7 +33,9 @@ class VaspStandards():
                        'lwave': False,  # save wavefunctions or not
                        'ldau': True,  # USE U
                        'lmaxmix': 4,
-                       'ldautype': 2}
+                       'ldautype': 2,
+                       'ldau_luj': {}
+                       }
 
     # parameters are submitted as an integer,
     # that will be multiplied by the standard below
@@ -102,26 +105,31 @@ class EspressoStandards():
 class CommonCalc():
     """+U values"""
     U_trickers = ['O', 'F']  # Oxides and Flourides will have +U
-    ldau_luj = {'Au': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'C':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Cu': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'H':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Ir': {'L': -1, 'U': 0.0, 'J': 0.0},
-                'O':  {'L': -1, 'U': 0.0, 'J': 0.0},
-                'Co': {'L': 2, 'U': 3.32, 'J': 0.0},
-                'Cr': {'L': 2, 'U': 3.7, 'J': 0.0},  # Meng U: 3.5
-                'Fe': {'L': 2, 'U': 5.3, 'J': 0.0},  # 'U': 4.3
-                'Mn': {'L': 2, 'U': 3.9, 'J': 0.0},  # 'U': 3.75
-                'Mo': {'L': 2, 'U': 4.38, 'J': 0.0},
-                'Nb': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ni': {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 6.45
-                'Sn': {'L': 2, 'U': 3.5, 'J': 0.0},
-                'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
-                'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
-                'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
-                'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
-                'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
+    U_luj = {'Au': {'L': -1, 'U': 0.0, 'J': 0.0},
+             'C':  {'L': -1, 'U': 0.0, 'J': 0.0},
+             'Cu': {'L': -1, 'U': 0.0, 'J': 0.0},
+             'H':  {'L': -1, 'U': 0.0, 'J': 0.0},
+             'Ir': {'L': -1, 'U': 0.0, 'J': 0.0},
+             'O':  {'L': -1, 'U': 0.0, 'J': 0.0},
+             'F':  {'L': -1, 'U': 0.0, 'J': 0.0},
+             'Co': {'L': 2, 'U': 3.32, 'J': 0.0},
+             'Cr': {'L': 2, 'U': 3.7, 'J': 0.0},  # Meng U: 3.5
+             'Fe': {'L': 2, 'U': 5.3, 'J': 0.0},  # 'U': 4.3
+             'Mn': {'L': 2, 'U': 3.9, 'J': 0.0},  # 'U': 3.75
+             'Mo': {'L': 2, 'U': 4.38, 'J': 0.0},
+             'Nb': {'L': 2, 'U': 4.00, 'J': 0.0},
+             'Ni': {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 6.45
+             'Sn': {'L': 2, 'U': 3.5, 'J': 0.0},
+             'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
+             'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
+             'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
+             'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
+             'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
+             'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
+
+    U_metals = list(U_luj.keys())
+    for U in U_trickers:
+        U_metals.remove(U)
 
     initial_magnetic_moments = {'Ce': 5,
                                 'Co': 5,
