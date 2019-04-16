@@ -9,7 +9,7 @@ from protosearch.calculate.submit import TriSubmit
 
 class TriSubmitTest(unittest.TestCase):
     def setUp(self):
-        self.bb_iron = BuildBulk(225, ['a', 'b'], ['Mn', 'O'])
+        self.bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
         self.submitter = TriSubmit(self.bb_iron.atoms,
                                    basepath_ext='tests')
         self.pwd = os.getcwd()
