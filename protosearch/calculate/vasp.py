@@ -38,6 +38,13 @@ class VaspModel:
         else:
             self.all_parameters = VaspStandards.sorted_calc_parameters
 
+            CommonCalc.initial_magnetic_moments.keys()
+
+        self.initial_magmoms = {}
+        for symbol in [s for s in symbols if s in CommonCalc.magnetic_trickers]:
+            self.initial_magmoms.update(
+                {symbol: CommonCalc.initial_magmoms[symbol]})
+
         nbands = self.calc_parameters['nbands']
         if nbands < 0:
             nbands = self.get_nbands(n_empty=abs(nbands))
@@ -48,7 +55,6 @@ class VaspModel:
         self.calc_values = []
         for param in self.all_parameters:
             self.calc_values += [self.calc_parameters[param]]
-
 
     def get_parameters(self):
         return self.all_parameters.copy(), self.calc_values.copy()
@@ -64,6 +70,8 @@ class VaspModel:
         the parameters are given the values #1, #2, #3... etc       
         """
         modelstr = get_model_header()
+        if self.initial_magmoms:
+            modelstr = self.add_initial_magmoms(modelstr)
 
         if self.setups:
             modelstr += 'setups = {'
@@ -111,6 +119,9 @@ class VaspModel:
         """
 
         modelstr = get_model_header()
+        if self.initial_magmoms:
+            modelstr = self.add_initial_magmoms(modelstr)
+
         modelstr += 'calc = Vasp(\n'
 
         if self.setups:
@@ -161,6 +172,14 @@ class VaspModel:
         nbands += nbands % self.ncpus
 
         return nbands
+
+    def add_initial_magmoms(self, modelstr):
+        modelstr += 'intial_magmoms = {}\n'.format(self.initial_magmoms)
+        modelstr += 'symbols = atoms.symbols\n'
+        modelstr += 'initial_magmom_atoms = [intial_magmoms.get(sym, 0) for sym in symbols]\n'
+        modelstr += 'atoms.set_initial_magnetic_moments(intial_magmom_atoms)\n\n'
+
+        return modelstr
 
 
 def get_poscar_from_atoms(atoms):
