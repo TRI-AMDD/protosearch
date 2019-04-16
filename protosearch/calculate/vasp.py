@@ -37,7 +37,6 @@ class VaspModel:
                 VaspStandards.u_parameters
         else:
             self.all_parameters = VaspStandards.sorted_calc_parameters
-
         self.calc_values = []
         for param in self.all_parameters:
             self.calc_values += [self.calc_parameters[param]]
@@ -51,7 +50,7 @@ class VaspModel:
             self.calc_values[nbands_index] = self.get_nbands()
 
     def get_parameters(self):
-        return self.all_parameters, self.calc_values
+        return self.all_parameters.copy(), self.calc_values.copy()
 
     def get_parameter_dict(self):
         return self.calc_parameters
@@ -110,8 +109,6 @@ class VaspModel:
         to Vasp.
         """
 
-        all_parameters = self.collect_parameters()
-
         modelstr = get_model_header()
         modelstr += 'calc = Vasp(\n'
 
@@ -121,7 +118,7 @@ class VaspModel:
                 modelstr += "'{}': '{}'".format(symbol, setup)
             modelstr += '},\n'
 
-        for param in all_parameters:
+        for param in self.all_parameters:
             value = self.calc_parameters[param]
             factor = VaspStandards.calc_decimal_parameters.get(param, None)
             if factor:
