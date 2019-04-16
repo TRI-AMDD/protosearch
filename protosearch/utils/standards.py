@@ -34,7 +34,7 @@ class VaspStandards():
                        'ldau': True,  # USE U
                        'lmaxmix': 4,
                        'ldautype': 2,
-                       'ldau_luj': {}
+                       'ldau_luj': {},
                        }
 
     # parameters are submitted as an integer,
@@ -131,15 +131,17 @@ class CommonCalc():
     for U in U_trickers:
         U_metals.remove(U)
 
-    initial_magnetic_moments = {'Ce': 5,
-                                'Co': 5,
-                                'Cr': 5,
-                                'Fe': 5,
-                                'Mn': 5,
-                                'Mo': 5,
-                                'Ni': 5,
-                                'V': 5,
-                                'W': 5}
+    initial_magmoms = {'Ce': 5,
+                       'Co': 5,
+                       'Cr': 5,
+                       'Fe': 5,
+                       'Mn': 5,
+                       'Mo': 5,
+                       'Ni': 5,
+                       'V': 5,
+                       'W': 5}
+
+    magnetic_trickers = list(initial_magmoms.keys())
 
 
 class CrystalStandards():
