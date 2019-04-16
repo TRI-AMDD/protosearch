@@ -8,12 +8,12 @@ from protosearch.utils.valence import VaspValence
 
 class VaspModel:
     def __init__(self,
-                 calc_parameters,
                  symbols,
-                 ncpus):
+                 calc_parameters=None,
+                 ncpus=1):
 
         self.calc_parameters = VaspStandards.calc_parameters
-        if calc_parameters:
+        if calc_parameters is not None:
             self.calc_parameters.update(calc_parameters)
         self.natoms = len(symbols)
         self.symbols = set(symbols)
@@ -37,17 +37,18 @@ class VaspModel:
                 VaspStandards.u_parameters
         else:
             self.all_parameters = VaspStandards.sorted_calc_parameters
+
+        nbands = self.calc_parameters['nbands']
+        if nbands < 0:
+            nbands = self.get_nbands(n_empty=abs(nbands))
+        else:
+            nbands = self.get_nbands()
+        self.calc_parameters.update({'nbands': nbands})
+
         self.calc_values = []
         for param in self.all_parameters:
             self.calc_values += [self.calc_parameters[param]]
 
-        nbands_index = self.all_parameters.index('nbands')
-        nbands = self.calc_values[nbands_index]
-        if nbands < 0:
-            self.calc_values[nbands_index] = self.get_nbands(
-                n_empty=abs(nbands))
-        else:
-            self.calc_values[nbands_index] = self.get_nbands()
 
     def get_parameters(self):
         return self.all_parameters.copy(), self.calc_values.copy()

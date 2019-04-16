@@ -80,13 +80,13 @@ class TriSubmit():
 
         self.master_parameters = calc_parameters
         self.Calculator = self.get_calculator()
-        self.calc_parameters, self.calc_values = \
+        self.calc_parameter_list, self.calc_values = \
             self.Calculator.get_parameters()
 
         dict_indices = [i for i, c in enumerate(self.calc_values)
                         if isinstance(c, dict)]
         for i in dict_indices:
-            del self.calc_parameters[i]
+            del self.calc_parameter_list[i]
             del self.calc_values[i]
 
     def submit_calculation(self):
@@ -154,8 +154,8 @@ class TriSubmit():
     def get_calculator(self):
         symbols = self.atoms.symbols
         Calculator = get_calculator(self.calculator)
-        return Calculator(self.master_parameters,
-                          symbols,
+        return Calculator(symbols,
+                          self.master_parameters,
                           self.ncpus)
 
     def write_model(self, filepath):
