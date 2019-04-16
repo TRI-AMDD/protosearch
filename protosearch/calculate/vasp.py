@@ -96,15 +96,6 @@ class VaspModel:
             else:
                 modelstr += '{} = #{}\n'.format(param, i+1)
 
-        # if self.calc_parameters.get('ldau_luj', None):
-        #    for param in VaspStandards.u_parameters:
-        #        value = self.calc_parameters[param]
-        #        modelstr += '{} = {}\n'.format(param, value)
-        #    all_parameters = VaspStandards.sorted_calc_parameters + \
-        #        VaspStandards.u_parameters
-        # else:
-        #    all_parameters = VaspStandards.sorted_calc_parameters
-
         modelstr += '\ncalc = Vasp(\n'
         modelstr += '    setups=setups,\n'
         for i, param in enumerate(self.all_parameters):

@@ -169,5 +169,5 @@ class TriSubmit():
         """ Write model.py"""
         modelstr = self.Calculator.get_model()
 
-        with open(filepath + '/model.py', 'w') as f:
+        with open(filepath + '/model_clean.py', 'w') as f:
             f.write(modelstr)
