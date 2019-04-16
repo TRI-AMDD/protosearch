@@ -175,7 +175,7 @@ class VaspModel:
 
     def add_initial_magmoms(self, modelstr):
         modelstr += 'initial_magmoms = {}\n'.format(self.initial_magmoms)
-        modelstr += 'symbols = atoms.symbols\n'
+        modelstr += 'symbols = atoms.get_chemical_symbols()\n'
         modelstr += 'initial_magmom_atoms = [initial_magmoms.get(sym, 0) for sym in symbols]\n'
         modelstr += 'atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n\n'
 
