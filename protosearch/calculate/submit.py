@@ -78,12 +78,21 @@ class TriSubmit():
         self.ncpus = ncpus
         self.queue = queue
 
-        self.calc_parameters = calc_parameters
+        self.master_parameters = calc_parameters
+        self.Calculator = self.get_calculator()
+        self.calc_parameter_list, self.calc_values = \
+            self.Calculator.get_parameters()
+
+        dict_indices = [i for i, c in enumerate(self.calc_values)
+                        if isinstance(c, dict)]
+        for i in dict_indices:
+            del self.calc_parameter_list[i]
+            del self.calc_values[i]
 
     def submit_calculation(self):
         """Submit calculation for unique structure. 
         First the execution path is set, then the initial POSCAR and models.py
-        is written to the directory.
+        are written to the directory.
 
         The calculation is submitted as a parametrized model with trisub.
         """
@@ -93,7 +102,7 @@ class TriSubmit():
         self.write_model(self.excpath)
 
         parameterstr_list = ['{}'.format(param)
-                             for param in self.calc_value_list]
+                             for param in self.calc_values]
         parameterstr = '/' + '/'.join(parameterstr_list)
 
         command = shlex.split('trisub -p {} -q {} -c {}'.format(
@@ -106,30 +115,33 @@ class TriSubmit():
             f.write(self.poscar)
 
     def set_execution_path(self):
-        """Create a unique path for each structure for submission """
+        """Create a unique submission path for each structure """
 
-        variables = ['BB']  # start BuildBulk identification
-        variables = [version.replace('.', '')]
-        variables += ['PT']  # specify prototype for species
-        variables += [str(self.spacegroup)]
-
+        # start Protosearch version identification
+        path_ext = ['protosearch' + version.replace('.', '')]
+        # specify prototype for species
+        path_ext += [str(self.spacegroup)]
+        # wyckoffs at position
+        species_wyckoffs_id = ''
         for spec, wy_spec in zip(self.species, self.wyckoffs):
-            variables += [spec + wy_spec]
-
-        self.p_name = ''.join(variables[3:])
-
-        variables += ['CP']  # Cell Parameters
+            species_wyckoffs_id += spec + wy_spec
+        path_ext += [species_wyckoffs_id]
+        # cell parameters
+        cell_param_id = ''
         for cell_key, cell_value in zip(self.cell_param_list,
                                         self.cell_value_list):
 
-            variables += ['{}{}'.format(cell_key, cell_value)]
+            cell_param_id += '{}{}'.format(cell_key, round(cell_value, 4)).\
+                replace('c/a', 'c').replace('b/a', 'b').\
+                replace('.', 'D').replace('-', 'M')
 
-        calc_name = ''.join(variables).replace('c/a', 'c').replace('b/a', 'b').\
-            replace('.', 'D').replace('-', 'M')
+        path_ext += [cell_param_id]
 
-        self.excroot = '{}/{}'.format(self.basepath, calc_name)
-        if not os.path.isdir(self.excroot):
-            os.mkdir(self.excroot)
+        self.excroot = self.basepath
+        for ext in path_ext:
+            self.excroot += '/{}'.format(ext)
+            if not os.path.isdir(self.excroot):
+                os.mkdir(self.excroot)
 
         calc_revision = 1
         path_exists = True
@@ -139,15 +151,23 @@ class TriSubmit():
         self.excpath = '{}/_{}'.format(self.excroot, calc_revision)
         os.mkdir(self.excpath)
 
-    def write_model(self, filepath):
-        """ Write model.py"""
+    def get_calculator(self):
         symbols = self.atoms.symbols
         Calculator = get_calculator(self.calculator)
+        return Calculator(symbols,
+                          self.master_parameters,
+                          self.ncpus)
 
-        modelstr, self.calc_value_list \
-            = Calculator(self.calc_parameters,
-                         symbols,
-                         self.ncpus).get_model()
+    def write_model(self, filepath):
+        """ Write model.py"""
+        modelstr = self.Calculator.get_parametrized_model()
 
         with open(filepath + '/model.py', 'w') as f:
+            f.write(modelstr)
+
+    def write_simple_model(self, filepath):
+        """ Write model.py"""
+        modelstr = self.Calculator.get_model()
+
+        with open(filepath + '/model_clean.py', 'w') as f:
             f.write(modelstr)
