@@ -8,11 +8,14 @@ class OqmdInterface:
         self.dbfile = dbfile
 
     def get_distinct_prototypes(self,
+                                source=None,
                                 formula=None,
                                 repetition=None):
         """
         Parameters
         ----------
+        source: str
+          oqmd project name, such as 'icsd'
         formula: str
           stiochiometry of the compound, f.ex. 'AB2' or AB2C3
         repetition: int
@@ -29,8 +32,10 @@ class OqmdInterface:
         if formula:
             if repetition:
                 formula += '\_{}'.format(repetition)
-            sql_command += "and value like '{}\_%' ESCAPE '\\'".format(formula)
+            sql_command += " and value like '{}\_%' ESCAPE '\\'".format(formula)
 
+        if source:
+             sql_command += " and id in (select id from text_key_values where key='source' and value='icsd')"
         cur.execute(sql_command)
 
         prototypes = cur.fetchall()
