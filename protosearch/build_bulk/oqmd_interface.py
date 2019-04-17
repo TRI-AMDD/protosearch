@@ -28,7 +28,7 @@ class OqmdInterface:
             "select distinct value from text_key_values where key='proto_name'"
         if formula:
             if repetition:
-                formula += '{}'.format(repetition)
+                formula += '\_{}'.format(repetition)
             sql_command += "and value like '{}\_%' ESCAPE '\\'".format(formula)
 
         cur.execute(sql_command)

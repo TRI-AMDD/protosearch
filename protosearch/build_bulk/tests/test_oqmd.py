@@ -20,7 +20,7 @@ class BuildBulkTest(unittest.TestCase):
     def test_unique_prototypes(self):
         path = sys.path[0]
         O = OqmdInterface(dbfile=path + '/oqmd_ver3.db')
-        p = O.get_distinct_prototypes(formula='ABC2')
+        p = O.get_distinct_prototypes(formula='ABC2', repetition=2)
 
         print(p)
         print('{} distinct prototypes found'.format(len(p)))
