@@ -29,7 +29,9 @@ class VaspModel:
         if np.any([t in symbols for t in CommonCalc.U_trickers]) and \
            np.any([t in symbols for t in CommonCalc.U_metals]):
             for symbol in symbols:
-                ldau_luj.update({symbol: U_luj[symbol]})
+                ldau_luj.update({symbol:
+                                 U_luj.get(symbol,
+                                           {'L': 0, 'U': 0, 'J': 0})})
 
         if ldau_luj:
             self.calc_parameters.update({'ldau_luj': ldau_luj})
@@ -37,8 +39,6 @@ class VaspModel:
                 VaspStandards.u_parameters
         else:
             self.all_parameters = VaspStandards.sorted_calc_parameters
-
-            CommonCalc.initial_magnetic_moments.keys()
 
         self.initial_magmoms = {}
         for symbol in [s for s in symbols if s in CommonCalc.magnetic_trickers]:
@@ -104,12 +104,10 @@ class VaspModel:
             else:
                 modelstr += '{} = #{}\n'.format(param, i+1)
 
-        modelstr += '\ncalc = Vasp(\n'
-        modelstr += '    setups=setups,\n'
-        for i, param in enumerate(self.all_parameters):
-            modelstr += '    {}={},\n'.format(param, param)
+        modelstr = self.add_calc(modelstr)
 
-        modelstr += ')\n\ncalc.calculate(atoms)\n'
+        modelstr = add_singlepoint(modelstr)
+
         return modelstr
 
     def get_model(self):
@@ -153,6 +151,8 @@ class VaspModel:
                 modelstr += '    {}={},\n'.format(param, value)
 
         modelstr += '    )\n\ncalc.calculate(atoms)\n'
+
+        modelstr = add_singlepoint(modelstr)
         return modelstr
 
     def get_nbands(self, n_empty=5):
@@ -174,11 +174,23 @@ class VaspModel:
         return nbands
 
     def add_initial_magmoms(self, modelstr):
-        modelstr += 'initial_magmoms = {}\n'.format(self.initial_magmoms)
-        modelstr += 'symbols = atoms.get_chemical_symbols()\n'
-        modelstr += 'initial_magmom_atoms = [initial_magmoms.get(sym, 0) for sym in symbols]\n'
-        modelstr += 'atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n\n'
+        modelstr += \
+            """initial_magmoms = {}
+symbols = atoms.get_chemical_symbols()
+initial_magmom_atoms = [initial_magmoms.get(sym, 0) for sym in symbols]
+atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n"""\
+    .format(self.initial_magmoms)
+        return modelstr
 
+    def add_calc(self, modelstr):
+        modelstr += '\ncalc = Vasp(\n'
+        modelstr += '    setups=setups,\n'
+        for i, param in enumerate(self.all_parameters):
+            if param == 'encut':
+                continue  # Relax at ENMAX
+            modelstr += '    {}={},\n'.format(param, param)
+
+        modelstr += ')\n\ncalc.calculate(atoms)\n'
         return modelstr
 
 
@@ -191,11 +203,28 @@ def get_poscar_from_atoms(atoms):
 
 
 def get_model_header():
-    modelstr = ''
-    modelstr = '#!/usr/bin/env python\n\n'
-    modelstr += 'from ase.io import read\n' + \
-        'from ase.calculators.vasp import Vasp\n\n'
+    modelstr = \
+        """#!/usr/bin/env python
+from ase.io import read
+from ase.calculators.vasp import Vasp
 
-    modelstr += "atoms = read('initial.POSCAR')\n\n"
+atoms = read('initial.POSCAR')
+"""
+    return modelstr
 
+
+def add_singlepoint(modelstr):
+    modelstr += \
+        """
+if not os.path.isfile('completed'):
+    sys.exit()
+
+atoms = read('OUTCAR')
+os.mkdir('relax')
+for (path, dir, file) in os.walk('.'):
+    os.rename(file, 'relax/{}'.format(file))
+
+calc.set(nsw=0)
+calc.calculate(atoms)
+"""
     return modelstr
