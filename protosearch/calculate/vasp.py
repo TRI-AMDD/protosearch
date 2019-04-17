@@ -205,6 +205,8 @@ def get_poscar_from_atoms(atoms):
 def get_model_header():
     modelstr = \
         """#!/usr/bin/env python
+import os
+import sys
 from ase.io import read
 from ase.calculators.vasp import Vasp
 
