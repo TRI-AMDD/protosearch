@@ -68,6 +68,7 @@ class CellParameters:
 
         cell_parameters = self.parameter_guess
         master_parameters = master_parameters or {}
+
         if master_parameters:
             master_parameters = clean_parameter_input(master_parameters)
             cell_parameters.update(master_parameters)
@@ -83,6 +84,7 @@ class CellParameters:
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
+            print('Optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
@@ -135,7 +137,7 @@ class CellParameters:
         self.d_o_f = relax
         self.fixed_angles = fixed_angles
 
-    def get_atoms(self, fix_parameters=None):
+    def get_atoms(self, fix_parameters=None, primitive=False):
         """
         Get ASE atoms object generated with the Enumerator 
         with parameters specified in `fix_parameters`. If all parameters
@@ -150,7 +152,10 @@ class CellParameters:
             parameter_guess_values += [self.parameter_guess[p]]
 
         self.b.set_parameter_values(self.parameters, parameter_guess_values)
-        poscar = self.b.get_primitive_poscar()
+        if primitive:
+            poscar = self.b.get_primitive_poscar()
+        else:
+            poscar = self.b.get_std_poscar()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
