@@ -61,6 +61,8 @@ class CellParameters:
         First wyckoff coordinates are optimized, then the angles, and at last
         the lattice constant.
 
+        TODO Set initial parameter values without fixing them
+
         Parameters:
         master_parameters: dict
            fixed cell parameters and values that will not be optimized.
