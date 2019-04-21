@@ -8,6 +8,7 @@ import sqlite3
 
 import copy
 import pandas as pd
+import numpy as np
 
 from ast import literal_eval
 from protosearch.build_bulk.cell_parameters import CellParameters
@@ -16,12 +17,17 @@ from protosearch.build_bulk.cell_parameters import CellParameters
 class OqmdInterface:
 
     def __init__(self, dbfile):
+        """Set up OqmdInterface."""
         #| - __init__
         self.dbfile = dbfile
 
         #__|
 
-    def create_proto_data_set(self, formula, elements):
+    def create_proto_data_set(self,
+        formula,
+        elements,
+        verbose=False,
+        ):
         """Create a dataset of unique prototype structures.
 
         Creates a unique set of structures of uniform stoicheometry and
@@ -54,90 +60,269 @@ class OqmdInterface:
 
         """
         #| - create_proto_data_set
-
         dbfile = self.dbfile
 
-
         #| - Argument Checker
+        if verbose:
+            print("Checking arguments")
+
         assert type(formula) == str, "Formula must be given as a string"
         assert type(elements) == list, "elements must be given as a list"
         #__|
 
+        if verbose:
+            print("Reading text_key_values table from sql")
+
         con = sqlite3.connect(dbfile)
-        df_systems = pd.read_sql_query("SELECT * FROM systems", con)
+        # df_systems = pd.read_sql_query("SELECT * FROM systems", con)
         df_text_key_values = pd.read_sql_query(
             "SELECT * FROM text_key_values", con)
 
-        #| - TEMP_0
-        df_tmp3 = self.temp_get_df(
+        if verbose:
+            print("Generating protoname --> structure_id dataframe")
+
+        df_protoid_to_strucid = self.get_protoid_to_strucid(
             df_text_key_values=df_text_key_values,
             user_stoich=formula,
             data_file_path=dbfile)
 
-        number_rows_to_do = 10
+        struct_ids_of_interest = list(np.concatenate(
+            df_protoid_to_strucid["id_list"].tolist()
+            ).ravel())
 
-        data_tmp3 = []
-        # for i_ind, row_i in df_tmp3.iterrows():
-        for i_ind, row_i in df_tmp3[0:number_rows_to_do].iterrows():
-            protoname_i = row_i["protoname"]
 
-            prototype_data_i = []
-            for id_i in row_i["id_list"]:
-                data_id_i = self.return_data_dict_for_id(
-                    id_i,
-                    df_systems=df_systems,
-                    )
 
-                prototype_data_i.append(data_id_i)
-                # data_tmp3.append(data_id_i)
+        # #####################################################################
+        # #####################################################################
+        # #####################################################################
 
-            data_tmp3.append({
-                "prototype_name": protoname_i,
-                "data": prototype_data_i,
-                })
+        if verbose:
+            print("Reading systems table from sql")
 
-        data_out_tmp8 = pd.DataFrame(data_tmp3)
+        # Read table from sql
+        dbfile = self.dbfile
+        con = sqlite3.connect(dbfile)
+        df_systems = pd.read_sql_query("SELECT * FROM systems", con)
+
+        df_systems = df_systems.set_index("id", drop=True)
+
+
+        #| - Drop unnecessary Columns
+        cols_to_drop = [
+            #  'id',
+            #  'unique_id',
+            'ctime',
+            'mtime',
+            'username',
+            'numbers',
+            'positions',
+            'cell',
+            'pbc',
+            'initial_magmoms',
+            'initial_charges',
+            'masses',
+            'tags',
+            'momenta',
+            'constraints',
+            'calculator',
+            'calculator_parameters',
+            'energy',
+            'free_energy',
+            'forces',
+            'stress',
+            'dipole',
+            'magmoms',
+            'magmom',
+            'charges',
+            #  'key_value_pairs',
+            #  'data',
+            'natoms',
+            'fmax',
+            'smax',
+            'volume',
+            'mass',
+            'charge',
+            ]
+
+        df_systems = df_systems.drop(cols_to_drop, 1)
         #__|
 
+        # Drop rows that aren't of the user defined subset
+        df_systems = df_systems.loc[struct_ids_of_interest]
 
-        #| - Performing Atom Subtitution to Create the Atoms List
+        # TEMP
+        df_systems = df_systems.sample(
+            # frac=0.3,
+            n=5,
+            )
+
+        if verbose:
+            print("Processing systems dataframe to generate Enumerator info")
+
+        data_list = []
+        for i_cnt, row_i in df_systems.iterrows():
+
+            #| - Processing 'key_value_pairs' column
+            key_value_pairs_str = row_i["key_value_pairs"]
+            key_value_pairs_str = key_value_pairs_str.replace(
+                " NaN,",
+                ' " NaN",')
+
+            try:
+                key_value_pairs_dict = literal_eval(key_value_pairs_str)
+
+            except:
+                print("This error shouldn't be happening!!!! 98ufs8")
+                print(key_value_pairs_str)
+
+                key_value_pairs_dict = {}
+
+            spacegroup = key_value_pairs_dict["spacegroup"]
+            proto_name = key_value_pairs_dict["proto_name"]
+
+
+            keys_to_delete = [
+                #  'proto_name',
+                #  'spacegroup',
+                 'name',
+                 'directory',
+                 'energy_pa',
+                 'volume',
+                 'bandgap',
+                 'delta_e',
+                 'stability',
+                #  'source',
+                 ]
+
+            for key_i in keys_to_delete:
+                key_value_pairs_dict.pop(key_i, None)
+            #__|
+
+            #| - Processing 'Data' column
+            data_str = row_i["data"]
+        #     key_value_pairs_str = key_value_pairs_str.replace(" NaN,", ' " NaN",')
+
+            data_dict = literal_eval(data_str)
+
+            prototype_params = literal_eval(data_dict["param"])
+            prototype_species = literal_eval(data_dict["species"])
+            prototype_wyckoffs = literal_eval(data_dict["wyckoffs"])
+
+            data_dict = {
+                "prototype_params": prototype_params,
+                "prototype_species": prototype_species,
+                "prototype_wyckoffs": prototype_wyckoffs,
+                }
+            #__|
+
+            out_dict = {
+                "id": row_i.name,
+                # "id": row_i["id"],
+                **key_value_pairs_dict,
+                **data_dict,
+                }
+            data_list.append(out_dict)
+
+        df_systems = pd.DataFrame(data_list)
+
+        # #####################################################################
+        # #####################################################################
+        # #####################################################################
+
+        if verbose:
+            print("Generating atoms objects")
+
+        data_list = []
+
         atoms_list_out = []
-        for i_cnt, row_i in data_out_tmp8.iterrows():
+        groups = df_systems.groupby("proto_name")
+        for protoname_i, group_i in groups:
+            row_i = group_i.iloc[0]
 
-            # Just considering 1 (the first) entry for each unique prototype
-            structure_first_i = row_i["data"][0]
-            print(i_cnt)
+            print(row_i)
 
-            # TODO Hacky try/except because of error from Enumerator
+
+            #| - Try-except rationale
+            # Try - Except is a hacky workaround some bugs in the Enumerator code
+
+            # Error from Enumerator Code
+            # ---------------------------------------------------------------------
+            # Not able to find value for parameter: yc0
+            # Lattice not set!
+            # Lattice not set!
+
+            # Full Trace-Traceback
+            # ---------------------------------------------------------------------------
+            # IndexError                                Traceback (most recent call last)
+            # <ipython-input-4-59c86e447fcb> in <module>
+            #       1 user_elems = ["O", "Al"]
+            # ----> 2 df_m = DB_inter.create_proto_data_set("AB2", user_elems)
+            #
+            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/oqmd_interface.py in create_proto_data_set(self, formula, elements)
+            #     221             atoms_i = self.create_atoms_object_with_replacement_tmp(
+            #     222                 row_i,
+            # --> 223                 user_elems=elements)
+            #     224
+            #     225             atoms_list_out.append(atoms_i)
+            #
+            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/oqmd_interface.py in create_atoms_object_with_replacement_tmp(self, indiv_data_tmp_i, user_elems)
+            #     629         parameters = CP.get_parameter_estimate(
+            #     630             master_parameters=init_wyck_params)
+            # --> 631         atoms_opt = CP.get_atoms(fix_parameters=parameters)
+            #     632         atoms_out = atoms_opt
+            #     633         #__|
+            #
+            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/cell_parameters.py in get_atoms(self, fix_parameters)
+            #     154         self.b.set_parameter_values(self.parameters, parameter_guess_values)
+            #     155         poscar = self.b.get_primitive_poscar()
+            # --> 156         self.atoms = read_vasp(io.StringIO(poscar))
+            #     157
+            #     158         return self.atoms
+            #
+            # ~/anaconda2/envs/py36/lib/python3.6/site-packages/ase/io/vasp.py in read_vasp(filename)
+            #     124     line1 = f.readline()
+            #     125
+            # --> 126     lattice_constant = float(f.readline().split()[0])
+            #     127
+            #     128     # Now the lattice vectors
+            #
+            # IndexError: list index out of range
+            #__|
+
             try:
                 atoms_i = self.create_atoms_object_with_replacement_tmp(
-                    structure_first_i,
+                    row_i,
                     user_elems=elements)
 
                 atoms_list_out.append(atoms_i)
 
+
+                sys_dict_i = {
+                    "proto_name": row_i["proto_name"],
+                    "atoms": atoms_i,
+                    }
+
+                data_list.append(sys_dict_i)
+
             except:
                 pass
+
+        prototype_atoms_dataframe = pd.DataFrame(data_list)
+
+        return(prototype_atoms_dataframe)
+
         #__|
 
 
-        return(atoms_list_out)
-        #__|
 
 
-
-
-
-
-
-    #| - Methods
-    def temp_get_df(self,
+    def get_protoid_to_strucid(self,
         df_text_key_values=None,
         user_stoich=None,
         data_file_path=None):
         """
         """
-        #| - temp_get_df
+        #| - get_protoid_to_strucid
         # Getting unique prototype IDs for given constraints
         # unique_prototype_names = self.get_distinct_prototypes(
         unique_protonames_for_user = self.get_distinct_prototypes(
@@ -149,32 +334,6 @@ class OqmdInterface:
         # Getting unique prototype names
         # unique_prototype_names = df_text_key_values[
         #     df_text_key_values["key"] == "proto_name"]["value"].unique()
-
-        #| - __old__
-        # df_unique_proto = pd.DataFrame(
-        #     unique_prototype_names, columns=["proto_name"])
-        #
-        #
-        #
-        # def get_stoich_from_protoname(row_i):
-        #     """
-        #     """
-        #     #| - TEMP
-        #     stoich_i = row_i["proto_name"].split("_")[0]
-        #     return(stoich_i)
-        #     #__|
-        #
-        # df_unique_proto["stoich_i"] = df_unique_proto.apply(
-        #     get_stoich_from_protoname,
-        #     axis=1)
-        #
-        # df_unique_proto_user = df_unique_proto[
-        #     df_unique_proto["stoich_i"] == user_stoich]
-        #
-        #
-        # tmp1 = df_unique_proto_user["proto_name"].tolist()
-        # unique_protonames_for_user = tmp1
-        #__|
 
         df_tmp = df_text_key_values[
             df_text_key_values["key"] == "proto_name"]
@@ -193,70 +352,23 @@ class OqmdInterface:
         return(out_df)
         #__|
 
-    def return_data_dict_for_id(self,
-        id_i,
-        df_systems=None):
-        """
-        """
-        #| - return_data_dict_for_id
-        #TODO add check
-        # There should only be row
-        data_string_i_tmp = df_systems[
-            df_systems["id"] == id_i]["key_value_pairs"]
-        data_string_i = data_string_i_tmp.iloc[0]
-
-
-        # Error on literal_eval from NaN without quotes
-        data_string_i_2 = data_string_i.replace(" NaN,", ' " NaN",')
-
-        try:
-            data_0 = literal_eval(data_string_i_2)
-        except:
-            print(data_string_i_2)
-            data_0 = {}
-
-        spacegroup = data_0["spacegroup"]
-        proto_name = data_0["proto_name"]
-
-        # ######################################################################
-        # ######################################################################
-        # ######################################################################
-
-        data_string_1 = df_systems[
-            df_systems["id"] == id_i]["data"].iloc[0]
-        data_1 = literal_eval(data_string_1)
-
-        prototype_params = literal_eval(data_1["param"])
-        prototype_species = literal_eval(data_1["species"])
-        prototype_wyckoffs = literal_eval(data_1["wyckoffs"])
-
-
-        data_dict_i = {
-            "id": id_i,
-            "proto_name": proto_name,
-            "spacegroup": spacegroup,
-
-            "prototype_params": prototype_params,
-            "prototype_species": prototype_species,
-            "prototype_wyckoffs": prototype_wyckoffs,
-            }
-
-        return(data_dict_i)
-        #__|
-
     def create_atoms_object_with_replacement_tmp(self,
         indiv_data_tmp_i,
         user_elems=None):
         """
+
+        Parameters
+        ----------
+        indiv_data_tmp_i: str
+        user_elems: list
         """
         #| - create_atoms_object_with_replacement_tmp
         spacegroup_i = indiv_data_tmp_i["spacegroup"]
         prototype_wyckoffs_i = indiv_data_tmp_i["prototype_wyckoffs"]
         prototype_species_i = indiv_data_tmp_i["prototype_species"]
-
         init_params = indiv_data_tmp_i["prototype_params"]
 
-        # Atom type replacement
+        #| - Atom type replacement
         # #############################################################
         # #############################################################
         # #############################################################
@@ -301,19 +413,18 @@ class OqmdInterface:
             user_elems,
             ))
 
+        #__|
+
         # #############################################################
         new_elem_list = []
         for i in prototype_species_i:
             new_elem_list.append(
                 elem_mapping_dict.get(i, i)
                 )
-
-        # print(new_elem_list)
-        # Preparing Initial Wyckoff parameters to pass to the
-        # CellParameters Code
-
         # #############################################################
 
+        # Preparing Initial Wyckoff parameters to pass to the
+        # CellParameters Code
         init_params_cpy = copy.copy(init_params)
 
         non_wyck_params = [
@@ -351,14 +462,8 @@ class OqmdInterface:
         atoms_out = atoms_opt
         #__|
 
-
         return(atoms_out)
         #__|
-
-    #__|
-
-
-
 
 
     def get_distinct_prototypes(self,
@@ -399,3 +504,182 @@ class OqmdInterface:
         return prototypes
 
         #__|
+
+
+
+#| - __old__
+
+
+    # def return_data_dict_for_id(self,
+    #     id_i,
+    #     df_systems=None):
+    #     """
+    #     """
+    #     #| - return_data_dict_for_id
+    #     #TODO add check
+    #     # There should only be row
+    #     data_string_i_tmp = df_systems[
+    #         df_systems["id"] == id_i]["key_value_pairs"]
+    #     data_string_i = data_string_i_tmp.iloc[0]
+    #
+    #
+    #     # Error on literal_eval from NaN without quotes
+    #     data_string_i_2 = data_string_i.replace(" NaN,", ' " NaN",')
+    #
+    #     try:
+    #         data_0 = literal_eval(data_string_i_2)
+    #     except:
+    #         print(data_string_i_2)
+    #         data_0 = {}
+    #
+    #     spacegroup = data_0["spacegroup"]
+    #     proto_name = data_0["proto_name"]
+    #
+    #     # ######################################################################
+    #     # ######################################################################
+    #     # ######################################################################
+    #
+    #     data_string_1 = df_systems[
+    #         df_systems["id"] == id_i]["data"].iloc[0]
+    #     data_1 = literal_eval(data_string_1)
+    #
+    #     prototype_params = literal_eval(data_1["param"])
+    #     prototype_species = literal_eval(data_1["species"])
+    #     prototype_wyckoffs = literal_eval(data_1["wyckoffs"])
+    #
+    #
+    #     data_dict_i = {
+    #         "id": id_i,
+    #         "proto_name": proto_name,
+    #         "spacegroup": spacegroup,
+    #
+    #         "prototype_params": prototype_params,
+    #         "prototype_species": prototype_species,
+    #         "prototype_wyckoffs": prototype_wyckoffs,
+    #         }
+    #
+    #     return(data_dict_i)
+    #     #__|
+    #
+    # def process_systems_table(self):
+    #     """
+    #     """
+    #     #| - process_systems_table
+    #     # # Read table from sql
+    #     # dbfile = self.dbfile
+    #     # con = sqlite3.connect(dbfile)
+    #     # df_systems = pd.read_sql_query("SELECT * FROM systems", con)
+    #     #
+    #     #
+    #     # #| - Drop unnecessary Columns
+    #     # cols_to_drop = [
+    #     #     #  'id',
+    #     #     #  'unique_id',
+    #     #     'ctime',
+    #     #     'mtime',
+    #     #     'username',
+    #     #     'numbers',
+    #     #     'positions',
+    #     #     'cell',
+    #     #     'pbc',
+    #     #     'initial_magmoms',
+    #     #     'initial_charges',
+    #     #     'masses',
+    #     #     'tags',
+    #     #     'momenta',
+    #     #     'constraints',
+    #     #     'calculator',
+    #     #     'calculator_parameters',
+    #     #     'energy',
+    #     #     'free_energy',
+    #     #     'forces',
+    #     #     'stress',
+    #     #     'dipole',
+    #     #     'magmoms',
+    #     #     'magmom',
+    #     #     'charges',
+    #     #     #  'key_value_pairs',
+    #     #     #  'data',
+    #     #     'natoms',
+    #     #     'fmax',
+    #     #     'smax',
+    #     #     'volume',
+    #     #     'mass',
+    #     #     'charge',
+    #     #     ]
+    #     #
+    #     # df_systems = df_systems.drop(cols_to_drop, 1)
+    #     # #__|
+    #     #
+    #     #
+    #     # data_list = []
+    #     # # for i_cnt, row_i in df_systems[0:20].iterrows():
+    #     # for i_cnt, row_i in df_systems.iterrows():
+    #     #
+    #     #     #| - Processing 'key_value_pairs' column
+    #     #     key_value_pairs_str = row_i["key_value_pairs"]
+    #     #     key_value_pairs_str = key_value_pairs_str.replace(" NaN,", ' " NaN",')
+    #     #
+    #     #     try:
+    #     #         key_value_pairs_dict = literal_eval(key_value_pairs_str)
+    #     #
+    #     #     except:
+    #     #         print("This error shouldn't be happening!!!! 98ufs8")
+    #     #         print(key_value_pairs_str)
+    #     #
+    #     #         key_value_pairs_dict = {}
+    #     #
+    #     #     spacegroup = key_value_pairs_dict["spacegroup"]
+    #     #     proto_name = key_value_pairs_dict["proto_name"]
+    #     #
+    #     #
+    #     #     keys_to_delete = [
+    #     #         #  'proto_name',
+    #     #         #  'spacegroup',
+    #     #          'name',
+    #     #          'directory',
+    #     #          'energy_pa',
+    #     #          'volume',
+    #     #          'bandgap',
+    #     #          'delta_e',
+    #     #          'stability',
+    #     #         #  'source',
+    #     #          ]
+    #     #
+    #     #     for key_i in keys_to_delete:
+    #     #         key_value_pairs_dict.pop(key_i, None)
+    #     #     #__|
+    #     #
+    #     #     #| - Processing 'Data' column
+    #     #     data_str = row_i["data"]
+    #     # #     key_value_pairs_str = key_value_pairs_str.replace(" NaN,", ' " NaN",')
+    #     #
+    #     #     data_dict = literal_eval(data_str)
+    #     #
+    #     #     prototype_params = literal_eval(data_dict["param"])
+    #     #     prototype_species = literal_eval(data_dict["species"])
+    #     #     prototype_wyckoffs = literal_eval(data_dict["wyckoffs"])
+    #     #
+    #     #     data_dict = {
+    #     #         "prototype_params": prototype_params,
+    #     #         "prototype_species": prototype_species,
+    #     #         "prototype_wyckoffs": prototype_wyckoffs,
+    #     #         }
+    #     #     #__|
+    #     #
+    #     #     out_dict = {
+    #     #         "id": row_i["id"],
+    #     #         **key_value_pairs_dict,
+    #     #         **data_dict,
+    #     #         }
+    #     #     data_list.append(out_dict)
+    #     #
+    #     # df_sys = pd.DataFrame(data_list)
+    #     # df_sys = df_sys.set_index("id", drop=True)
+    #     #
+    #     # return(df_sys)
+    #     #__|
+    #
+
+
+#__|
