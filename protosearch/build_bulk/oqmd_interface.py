@@ -183,10 +183,6 @@ class OqmdInterface:
 
                 key_value_pairs_dict = {}
 
-            # spacegroup = key_value_pairs_dict["spacegroup"]
-            # proto_name = key_value_pairs_dict["proto_name"]
-
-
             keys_to_delete = [
                 'name',
                 'directory',
@@ -244,73 +240,27 @@ class OqmdInterface:
         atoms_list_out = []
         groups = df_systems.groupby("proto_name")
         for protoname_i, group_i in groups:
+
+            # COMBAK Here I'm just taking the prototype parameters from the
+            # first structure in OQMD, this can be improved with further logic
+            # and tests
             row_i = group_i.iloc[0]
 
 
-            #| - Try-except rationale
-            # Try - Except is a hacky workaround some bugs in the Enumerator code
+            atoms_i = self.__create_atoms_object_with_replacement__(
+                row_i,
+                user_elems=elements)
 
-            # Error from Enumerator Code
-            # ---------------------------------------------------------------------
-            # Not able to find value for parameter: yc0
-            # Lattice not set!
-            # Lattice not set!
-
-            # Full Trace-Traceback
-            # ---------------------------------------------------------------------------
-            # IndexError                                Traceback (most recent call last)
-            # <ipython-input-4-59c86e447fcb> in <module>
-            #       1 user_elems = ["O", "Al"]
-            # ----> 2 df_m = DB_inter.create_proto_data_set("AB2", user_elems)
-            #
-            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/oqmd_interface.py in create_proto_data_set(self, formula, elements)
-            #     221             atoms_i = self.__create_atoms_object_with_replacement__(
-            #     222                 row_i,
-            # --> 223                 user_elems=elements)
-            #     224
-            #     225             atoms_list_out.append(atoms_i)
-            #
-            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/oqmd_interface.py in __create_atoms_object_with_replacement__(self, indiv_data_tmp_i, user_elems)
-            #     629         parameters = CP.get_parameter_estimate(
-            #     630             master_parameters=init_wyck_params)
-            # --> 631         atoms_opt = CP.get_atoms(fix_parameters=parameters)
-            #     632         atoms_out = atoms_opt
-            #     633         #__|
-            #
-            # /mnt/c/Users/raulf/github/protosearch/protosearch/build_bulk/cell_parameters.py in get_atoms(self, fix_parameters)
-            #     154         self.b.set_parameter_values(self.parameters, parameter_guess_values)
-            #     155         poscar = self.b.get_primitive_poscar()
-            # --> 156         self.atoms = read_vasp(io.StringIO(poscar))
-            #     157
-            #     158         return self.atoms
-            #
-            # ~/anaconda2/envs/py36/lib/python3.6/site-packages/ase/io/vasp.py in read_vasp(filename)
-            #     124     line1 = f.readline()
-            #     125
-            # --> 126     lattice_constant = float(f.readline().split()[0])
-            #     127
-            #     128     # Now the lattice vectors
-            #
-            # IndexError: list index out of range
-            #__|
-
-            try:
-                atoms_i = self.__create_atoms_object_with_replacement__(
-                    row_i,
-                    user_elems=elements)
-
-                atoms_list_out.append(atoms_i)
+            atoms_list_out.append(atoms_i)
 
 
-                sys_dict_i = {
-                    "proto_name": row_i["proto_name"],
-                    "atoms": atoms_i,
-                    }
+            sys_dict_i = {
+                "proto_name": row_i["proto_name"],
+                "atoms": atoms_i,
+                }
 
-                data_list.append(sys_dict_i)
+            data_list.append(sys_dict_i)
 
-            except:
-                pass
 
         prototype_atoms_dataframe = pd.DataFrame(data_list)
 
