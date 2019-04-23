@@ -4,7 +4,7 @@
 Author(s): Raul A. Flores; Kirsten Winther
 """
 
-#| - Import Modules
+# Import Modules
 from ase.db import connect
 import sqlite3
 
@@ -14,16 +14,13 @@ import numpy as np
 
 from ast import literal_eval
 from protosearch.build_bulk.cell_parameters import CellParameters
-#__|
 
 class OqmdInterface:
 
     def __init__(self, dbfile):
         """Set up OqmdInterface."""
-        #| - __init__
         self.dbfile = dbfile
 
-        #__|
 
     def create_proto_data_set(self,
         formula,
@@ -66,16 +63,15 @@ class OqmdInterface:
         verbose: bool
           Switches verbosity of module (not implemented fully now)
         """
-        #| - create_proto_data_set
         dbfile = self.dbfile
 
-        #| - Argument Checker
+        # Argument Checker
         if verbose:
             print("Checking arguments")
 
         assert type(formula) == str, "Formula must be given as a string"
         assert type(elements) == list, "elements must be given as a list"
-        #__|
+
 
         if verbose:
             print("Reading text_key_values table from sql")
@@ -113,7 +109,7 @@ class OqmdInterface:
         df_systems = df_systems.set_index("id", drop=True)
 
 
-        #| - Drop unnecessary Columns
+        # Drop unnecessary Columns
         cols_to_drop = [
             #  'id',
             #  'unique_id',
@@ -151,7 +147,6 @@ class OqmdInterface:
             ]
 
         df_systems = df_systems.drop(cols_to_drop, 1)
-        #__|
 
         # Drop rows that aren't of the user defined subset
         df_systems = df_systems.loc[struct_ids_of_interest]
@@ -168,7 +163,7 @@ class OqmdInterface:
         data_list = []
         for i_cnt, row_i in df_systems.iterrows():
 
-            #| - Processing 'key_value_pairs' column
+            # Processing 'key_value_pairs' column
             key_value_pairs_str = row_i["key_value_pairs"]
             key_value_pairs_str = key_value_pairs_str.replace(
                 " NaN,",
@@ -199,9 +194,8 @@ class OqmdInterface:
 
             for key_i in keys_to_delete:
                 key_value_pairs_dict.pop(key_i, None)
-            #__|
 
-            #| - Processing 'Data' column
+            # Processing 'Data' column
             data_str = row_i["data"]
         #     key_value_pairs_str = key_value_pairs_str.replace(" NaN,", ' " NaN",')
 
@@ -216,7 +210,6 @@ class OqmdInterface:
                 "prototype_species": prototype_species,
                 "prototype_wyckoffs": prototype_wyckoffs,
                 }
-            #__|
 
             out_dict = {
                 "id": row_i.name,
@@ -266,7 +259,6 @@ class OqmdInterface:
 
         return(prototype_atoms_dataframe)
 
-        #__|
 
     def __get_protoid_to_strucid__(self,
         df_text_key_values=None,
@@ -274,7 +266,6 @@ class OqmdInterface:
         data_file_path=None):
         """
         """
-        #| - __get_protoid_to_strucid__
         # Getting unique prototype IDs for given constraints
         # unique_prototype_names = self.get_distinct_prototypes(
         unique_protonames_for_user = self.get_distinct_prototypes(
@@ -311,7 +302,6 @@ class OqmdInterface:
         out_df = pd.DataFrame(data_list)
 
         return(out_df)
-        #__|
 
     def __create_atoms_object_with_replacement__(self,
         indiv_data_tmp_i,
@@ -329,20 +319,17 @@ class OqmdInterface:
 
         user_elems: list
         """
-        #| - __create_atoms_object_with_replacement__
         spacegroup_i = indiv_data_tmp_i["spacegroup"]
         prototype_wyckoffs_i = indiv_data_tmp_i["prototype_wyckoffs"]
         prototype_species_i = indiv_data_tmp_i["prototype_species"]
         init_params = indiv_data_tmp_i["prototype_params"]
 
-        #| - Atom type replacement
+        # Atom type replacement
         def CountFrequency(my_list):
             """
             Python program to count the frequency of
             elements in a list using a dictionary
             """
-            #| - CountFrequency
-            # Creating an empty dictionary
             freq = {}
             for item in my_list:
                 if (item in freq):
@@ -351,7 +338,7 @@ class OqmdInterface:
                     freq[item] = 1
 
             return(freq)
-            #__|
+
 
         elem_count_freq = CountFrequency(prototype_species_i)
 
@@ -375,9 +362,7 @@ class OqmdInterface:
         for i in prototype_species_i:
             new_elem_list.append(
                 elem_mapping_dict.get(i, i))
-        #__|
 
-        #| - Preparing Initial Prototype Parameters
         # Preparing Initial Wyckoff parameters to pass to the
         # CellParameters Code
 
@@ -395,9 +380,8 @@ class OqmdInterface:
         for param_i in non_wyck_params:
             if param_i in list(init_wyck_params.keys()):
                 del init_wyck_params[param_i]
-        #__|
 
-        #| - Using CellParameters Code
+        # Using CellParameters Code
         CP = CellParameters(
             spacegroup=spacegroup_i,
             wyckoffs=prototype_wyckoffs_i,
@@ -409,10 +393,8 @@ class OqmdInterface:
             master_parameters=init_wyck_params)
         atoms_opt = CP.get_atoms(fix_parameters=parameters)
         atoms_out = atoms_opt
-        #__|
 
         return(atoms_out)
-        #__|
 
     def get_distinct_prototypes(self,
                                 source=None,
@@ -429,7 +411,7 @@ class OqmdInterface:
         repetition: int
           repetition of the stiochiometry
         """
-        #| - get_distinct_prototypes
+        # get_distinct_prototypes
         db = connect(self.dbfile)
 
         con = db.connection or db._connect()
@@ -450,5 +432,3 @@ class OqmdInterface:
         prototypes = [p[0] for p in prototypes]
 
         return prototypes
-
-        #__|
