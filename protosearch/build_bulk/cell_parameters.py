@@ -11,7 +11,7 @@ import bulk_enumerator as be
 
 
 class CellParameters:
-    """ 
+    """
     Provides a fair estimate of cell parameters including lattice constants,
     angles, and free wyckoff coordinates.
 
