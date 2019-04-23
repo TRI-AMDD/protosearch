@@ -35,12 +35,42 @@ class Workflow(PrototypeSQL):
         # self.check_submissions()
         # self.rerun_failed_calculations()
 
-    def submit(self, prototype, ncpus=1, calc_parameters={}):
+    def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None):
+        for atoms in atoms_list:
+            self.submit_atoms(atoms, ncpus, calc_parameters)
+
+    def submit_atoms(self, atoms, ncpus=1, calc_parameters=None):
+
+        prototype, parameters = get_classification(atoms)
+
+        Sub = TriSubmit(atoms=atoms,
+                        ncpus=ncpus,
+                        calc_parameters=calc_parameters,
+                        basepath=self.basepath)
+
+        Sub.submit_calculation()
+
+        key_value_pairs = {'p_name': prototype['prototype_name'],
+                           'path': Sub.excpath,
+                           'spacegroup': prototype['spacegroup'],
+                           'wyckoffs': json.dumps(prototype['wyckoffs']),
+                           'species': json.dumps(prototype['species'])}
+
+        self.write_submission(key_value_pairs)
+
+    def submit(self, prototype, ncpus=1, calc_parameters=None):
+        cell_parameters = prototype.get('parameters', None)
+
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
-                       prototype['species'])
+                       prototype['species'],
+                       )
 
         atoms = BB.get_atoms_from_poscar()
+        formula = atoms.get_chemical_formula()
+
+        if self.ase_db.count(formula=formula, p_name=prototype['p_name'])
+
         Sub = TriSubmit(atoms=atoms,
                         ncpus=ncpus,
                         calc_parameters=calc_parameters,
@@ -169,7 +199,12 @@ class Workflow(PrototypeSQL):
         self._initialize(con)
 
         for d in self.ase_db.select(error=1):
-            if 'Vasp exited' in d.data['error']:
+            resubmit, handle = vasp_errors(error)
+            if not resubmit:
+                print('Job errored: {}'.format(handle))
+                self.ase_db.update(id=d.id, completed=-1)
+                continue
+            if handle == 'ncpus':
                 ncpus = 8
             else:
                 ncpus = 1
@@ -210,3 +245,11 @@ def set_calculator_info(atoms, parameters):
     atoms.calc.parameters = parameters
 
     return atoms
+
+
+def vasp_errors(error):
+
+    if 'lattice_constant = float(f.readline().split()[0])' in error:
+        return False, 'Vasp failed'
+    elif 'Vasp exited' in error:
+        return True, 'ncpus'
