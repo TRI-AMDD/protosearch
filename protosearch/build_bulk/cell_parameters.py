@@ -34,12 +34,12 @@ class CellParameters:
         self.wyckoffs = wyckoffs
         self.species = species
 
-        self.b = be.bulk.BULK()
-        self.b.set_spacegroup(self.spacegroup)
-        self.b.set_wyckoff(self.wyckoffs)
-        self.b.set_species(self.species)
-
+        b = be.bulk.BULK()
+        b.set_spacegroup(self.spacegroup)
+        b.set_wyckoff(self.wyckoffs)
+        b.set_species(self.species)
         self.parameters = self.b.get_parameters()
+
         self.coor_parameters = []
         self.angle_parameters = []
         self.lattice_parameters = []
@@ -151,11 +151,18 @@ class CellParameters:
         for p in self.parameters:
             parameter_guess_values += [self.parameter_guess[p]]
 
-        self.b.set_parameter_values(self.parameters, parameter_guess_values)
+        b = be.bulk.BULK()
+        b.set_spacegroup(self.spacegroup)
+        b.set_wyckoff(self.wyckoffs)
+        b.set_species(self.species)
+
+        parameters = b.get_parameters()
+
+        b.set_parameter_values(parameters, parameter_guess_values)
         if primitive:
-            poscar = self.b.get_primitive_poscar()
+            poscar = b.get_primitive_poscar()
         else:
-            poscar = self.b.get_std_poscar()
+            poscar = b.get_std_poscar()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
