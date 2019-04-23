@@ -8,6 +8,9 @@ Author(s): Raul A. Flores; Kirsten Winther
 from ase.db import connect
 import sqlite3
 
+from ase.symbols import string2symbols
+import string
+
 import copy
 import pandas as pd
 import numpy as np
@@ -23,8 +26,9 @@ class OqmdInterface:
 
 
     def create_proto_data_set(self,
-        formula,
-        elements,
+        chemical_formula=None,
+        formula=None,
+        elements=None,
         verbose=False,
         ):
         """Create a dataset of unique prototype structures.
@@ -36,8 +40,11 @@ class OqmdInterface:
         Parameters
         ----------
 
+        chemical_formula: str
+            desired chemical formula with elements inserted (ex. 'Al2O3')
+
         formula: str
-          desired stoicheometry of data set(ex. 'AB2' or 'Ab2C3')
+          desired stoicheometry of data set (ex. 'AB2' or 'Ab2C3')
 
 
         elements: list
@@ -69,8 +76,22 @@ class OqmdInterface:
         if verbose:
             print("Checking arguments")
 
-        assert type(formula) == str, "Formula must be given as a string"
-        assert type(elements) == list, "elements must be given as a list"
+
+        if chemical_formula is not None:
+            assert type(chemical_formula) == str, "Formula must be given as a string"
+            elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(chemical_formula)
+            formula = stoich_formula
+            elements = elem_list_ordered
+
+        elif formula is not None and elements is not None:
+            # All good here
+            assert type(formula) == str, "Formula must be given as a string"
+            assert type(elements) == list, "elements must be given as a list"
+
+            pass
+        else:
+            raise ValueError("ERROR: Couldn't correctly parse input")
+
 
 
         if verbose:
@@ -432,3 +453,52 @@ class OqmdInterface:
         prototypes = [p[0] for p in prototypes]
 
         return prototypes
+
+
+
+
+def formula2elem(formula):
+    '''
+    convert plain chemical formula to element list with their composition and
+    the element agnostic chemical formula.
+
+    arg: formula(str)
+    return:
+    elem_list(list): element list
+    compos(dict): composition for elements
+    stoich_formula(str): Stoicheometric representation of the chemical formula
+    '''
+    elem_list = string2symbols(formula)
+
+    compos = {}
+    uniq = set(elem_list)
+    for symbol in uniq:
+        compos.update({symbol: elem_list.count(symbol)})
+
+
+    # Creating stoicheometric repr of formula (i.e. AB2 not FeO2)
+    data_list = []
+    for key_i, value_i in compos.items():
+        data_list.append(
+            {"element": key_i,
+             "stoich": value_i})
+
+    df_sorted = pd.DataFrame(data_list).sort_values("stoich")
+    df_sorted["fill_symbol"] = list(string.ascii_uppercase[0:len(df_sorted)])
+
+    # List of elements ordered by highest stoich to lowest
+    # This method is getting a bit redundant but it's just to assure
+    # compatability with the way I wrote the module, can clean up later
+    # This includes the stoich_formula variable that I'm creating as well,
+    # it's also needed for my method
+    elem_list_ordered = list(reversed(df_sorted["element"].tolist()))
+
+    stoich_formula = ""
+    for i_ind, row_i in df_sorted.iterrows():
+        stoich_formula += str(row_i["fill_symbol"])  # + str(row_i["stoich"])
+        if row_i["stoich"] == 1:
+            pass
+        else:
+            stoich_formula += str(row_i["stoich"])
+
+    return(elem_list, compos, stoich_formula, elem_list_ordered)
