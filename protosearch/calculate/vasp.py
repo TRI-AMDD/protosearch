@@ -218,13 +218,17 @@ atoms = read('initial.POSCAR')
 def add_singlepoint(modelstr):
     modelstr += \
         """
-if not os.path.isfile('completed'):
+path = sys.path[0]
+
+if not os.path.isfile(path + '/completed'):
     sys.exit()
 
 atoms = read('OUTCAR')
-os.mkdir('relax')
-for (path, dir, file) in os.walk('.'):
-    os.rename(file, 'relax/{}'.format(file))
+
+for (root, dir, file) in os.walk(path):
+    if file == 'model.py':
+        continue
+    os.rename('{}/{}'.format(path, file), '{}/{}.old'.format(path, file))
 
 calc.set(nsw=0)
 calc.calculate(atoms)
