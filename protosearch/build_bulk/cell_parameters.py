@@ -38,7 +38,7 @@ class CellParameters:
         b.set_spacegroup(self.spacegroup)
         b.set_wyckoff(self.wyckoffs)
         b.set_species(self.species)
-        self.parameters = self.b.get_parameters()
+        self.parameters = b.get_parameters()
 
         self.coor_parameters = []
         self.angle_parameters = []
