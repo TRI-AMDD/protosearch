@@ -11,7 +11,7 @@ import bulk_enumerator as be
 
 
 class CellParameters:
-    """ 
+    """
     Provides a fair estimate of cell parameters including lattice constants,
     angles, and free wyckoff coordinates.
 
@@ -34,12 +34,12 @@ class CellParameters:
         self.wyckoffs = wyckoffs
         self.species = species
 
-        self.b = be.bulk.BULK()
-        self.b.set_spacegroup(self.spacegroup)
-        self.b.set_wyckoff(self.wyckoffs)
-        self.b.set_species(self.species)
+        b = be.bulk.BULK()
+        b.set_spacegroup(self.spacegroup)
+        b.set_wyckoff(self.wyckoffs)
+        b.set_species(self.species)
+        self.parameters = b.get_parameters()
 
-        self.parameters = self.b.get_parameters()
         self.coor_parameters = []
         self.angle_parameters = []
         self.lattice_parameters = []
@@ -60,8 +60,6 @@ class CellParameters:
         Enumerator.
         First wyckoff coordinates are optimized, then the angles, and at last
         the lattice constant.
-
-        TODO Set initial parameter values without fixing them
 
         Parameters:
         master_parameters: dict
@@ -141,7 +139,7 @@ class CellParameters:
 
     def get_atoms(self, fix_parameters=None, primitive=False):
         """
-        Get ASE atoms object generated with the Enumerator 
+        Get ASE atoms object generated with the Enumerator
         with parameters specified in `fix_parameters`. If all parameters
         are not provided, a very rough estimate will be applied.
         """
@@ -153,11 +151,18 @@ class CellParameters:
         for p in self.parameters:
             parameter_guess_values += [self.parameter_guess[p]]
 
-        self.b.set_parameter_values(self.parameters, parameter_guess_values)
+        b = be.bulk.BULK()
+        b.set_spacegroup(self.spacegroup)
+        b.set_wyckoff(self.wyckoffs)
+        b.set_species(self.species)
+
+        parameters = b.get_parameters()
+
+        b.set_parameter_values(parameters, parameter_guess_values)
         if primitive:
-            poscar = self.b.get_primitive_poscar()
+            poscar = b.get_primitive_poscar()
         else:
-            poscar = self.b.get_std_poscar()
+            poscar = b.get_std_poscar()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
@@ -225,12 +230,12 @@ class CellParameters:
         return parameter_guess
 
     def get_wyckoff_coordinates(self, view_images=False):
-        """ 
-        Get an estimate for free wyckoff coordinates. The positions are 
-        optimized from the interatomic distances, d, by mininizing 
+        """
+        Get an estimate for free wyckoff coordinates. The positions are
+        optimized from the interatomic distances, d, by mininizing
         the repulsion R = \Sum_{i>j} 1/d^12_{ij}.
 
-        Since the initial guess is random, the structure is going to be 
+        Since the initial guess is random, the structure is going to be
         different for each run. *** Other solutions for this?
         """
 
@@ -291,8 +296,8 @@ class CellParameters:
         return self.parameter_guess
 
     def get_angles(self, fix_parameters={}):
-        """ 
-        Get an estimate for unit cell angles. The angles are optimized by 
+        """
+        Get an estimate for unit cell angles. The angles are optimized by
         minimizing the volume of the unit cell.
         ** Work in progess
 
@@ -350,9 +355,9 @@ class CellParameters:
 
     def get_lattice_constants(self, fix_parameters={}, proximity=1.0):
         """
-        Get lattice constants by reducing the cell size (one direction at 
-        the time) until atomic distances on the closest pair reaches the 
-        sum of the covalent radii. 
+        Get lattice constants by reducing the cell size (one direction at
+        the time) until atomic distances on the closest pair reaches the
+        sum of the covalent radii.
         """
 
         if not fix_parameters:
