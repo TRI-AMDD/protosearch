@@ -2,7 +2,6 @@ import os
 import shlex
 import subprocess
 
-from protosearch import __version__ as version
 from protosearch.utils import get_basepath
 from protosearch.build_bulk.classification import get_classification
 from .calculator import get_calculator
@@ -117,10 +116,8 @@ class TriSubmit():
     def set_execution_path(self):
         """Create a unique submission path for each structure """
 
-        # start Protosearch version identification
-        path_ext = ['protosearch' + version.replace('.', '')]
         # specify prototype for species
-        path_ext += [str(self.spacegroup)]
+        path_ext = [str(self.spacegroup)]
         # wyckoffs at position
         species_wyckoffs_id = ''
         for spec, wy_spec in zip(self.species, self.wyckoffs):
