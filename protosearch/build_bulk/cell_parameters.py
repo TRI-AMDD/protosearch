@@ -28,11 +28,13 @@ class CellParameters:
     def __init__(self,
                  spacegroup,
                  wyckoffs,
-                 species):
-
+                 species,
+                 verbose=True,
+                 ):
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
+        self.verbose = verbose
 
         b = be.bulk.BULK()
         b.set_spacegroup(self.spacegroup)
@@ -85,16 +87,36 @@ class CellParameters:
                 cell_parameters.update(angle_guess)
 
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
-            print('Optimizing lattice constants')
+            if self.verbose:
+                print('Optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
+
+
+
 
         atoms = self.get_atoms(fix_parameters=cell_parameters)
 
-        if self.check_prototype(atoms):
-            return cell_parameters
+
+
+        tmp = self.check_prototype(atoms)
+        if tmp:
+            # return cell_parameters
+            out = cell_parameters
         else:
-            print("Structure reduced to another spacegroup")
-            return None
+            if self.verbose:
+                print("Structure reduced to another spacegroup")
+            # return None
+            out = None
+
+
+        # # #############################################################################
+        # # #############################################################################
+        # mem_f = (process.memory_info().rss) / 1E6
+        # print(" -------> memory usage diff: ", str(mem_f - mem_i))
+        # # #############################################################################
+        # # #############################################################################
+
+        return(out)
 
     def set_lattice_dof(self):
         """Set degrees of freedom for lattice constants and angles
@@ -184,10 +206,14 @@ class CellParameters:
 
         b2.delete()
         if not sg2 == self.spacegroup:
-            print('Symmetry reduced to {} from {}'.format(sg2, self.spacegroup))
+            if self.verbose:
+                print('Symmetry reduced to {} from {}'.format(
+                    sg2, self.spacegroup))
             return False
         if not w2 == self.wyckoffs:
-            print('Wyckoffs reduced to {} from {}'.format(w2, self.wyckoffs))
+            if self.verbose:
+                print('Wyckoffs reduced to {} from {}'.format(
+                    w2, self.wyckoffs))
             return False
 
         return True
@@ -259,7 +285,10 @@ class CellParameters:
         Diff = 1
         j = 1
         while Diff > 0.05 and j < 11:  # Outer convergence criteria
-            print('Wyckoff coordinate iteration {}, conv: {}'.format(j, Diff))
+            if self.verbose:
+                print('Wyckoff coordinate iteration {}, conv: {}'.format(
+                    j, Diff))
+
             # Change one parameter at the time
             for coor_param in self.coor_parameters:
                 cp0 = self.parameter_guess[coor_param]
@@ -316,7 +345,9 @@ class CellParameters:
         j = 1
         Diff = 1
         while Diff > 0.01:  # Outer convergence criteria
-            print('Angle iteration {}'.format(j))
+            if self.verbose:
+                print('Angle iteration {}'.format(j))
+
             for angle in self.angle_parameters:
                 direction = -1
                 step_size = 1
