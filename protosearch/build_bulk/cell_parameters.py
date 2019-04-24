@@ -91,30 +91,14 @@ class CellParameters:
                 print('Optimizing lattice constants')
             cell_parameters = self.get_lattice_constants(cell_parameters)
 
-
-
-
         atoms = self.get_atoms(fix_parameters=cell_parameters)
 
-
-
-        tmp = self.check_prototype(atoms)
-        if tmp:
-            # return cell_parameters
+        if self.check_prototype(atoms):
             out = cell_parameters
         else:
             if self.verbose:
                 print("Structure reduced to another spacegroup")
-            # return None
             out = None
-
-
-        # # #############################################################################
-        # # #############################################################################
-        # mem_f = (process.memory_info().rss) / 1E6
-        # print(" -------> memory usage diff: ", str(mem_f - mem_i))
-        # # #############################################################################
-        # # #############################################################################
 
         return(out)
 
