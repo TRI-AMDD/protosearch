@@ -23,18 +23,24 @@ class OqmdInterface:
         dbfile,
         verbose=False,
         ):
-        """Set up OqmdInterface."""
+        """Set up OqmdInterface.
+
+        Parameters
+        ----------
+
+        dbfile: str (filepath)
+            filepath of oqmd databae file (available upon request from S3)
+
+        verbose: bool
+            Switches verbosity of module (not implemented fully now)
+        """
         self.dbfile = dbfile
         self.verbose = verbose
 
     def create_proto_data_set(self,
         chemical_formula=None,
-        # formula=None,
-        # elements=None,
-
         source=None,
-        repetition=None,
-        ):
+        repetition=None):
         """Create a dataset of unique prototype structures.
 
         Creates a unique set of structures of uniform stoicheometry and
@@ -47,32 +53,11 @@ class OqmdInterface:
         chemical_formula: str
             desired chemical formula with elements inserted (ex. 'Al2O3')
 
-        formula: str
-          desired stoicheometry of data set (ex. 'AB2' or 'Ab2C3')
+        source: str
+          oqmd project name, such as 'icsd'
 
-
-        elements: list
-          list of desired elements to substitute into the dataset
-
-          NOTE: The order of the elements list must correspond to the ordered
-          stoicheometry, such that the first element from the elements list
-          will replace into the most frequenct term of the desired chemical
-          formula.
-
-          Ex.)
-
-            B is the more frequent term, followed by A
-            AB2 --> A1 B2
-
-            Fe is the first element given in the user defined list, so it will
-            replace the most frequent term in the formula (B in this case)
-            elements = [Fe, C]
-
-            A1 B2 -----> CF2
-
-
-        verbose: bool
-          Switches verbosity of module (not implemented fully now)
+        repetition: int
+          repetition of the stiochiometry
         """
         dbfile = self.dbfile
         verbose = self.verbose
@@ -167,8 +152,6 @@ class OqmdInterface:
         ):
         """
         """
-        # distinct_protonames = OqmdInterface(dbfile).get_distinct_prototypes(
-        #     formula=formula)
         distinct_protonames = self.get_distinct_prototypes(
             formula=formula,
             source=source,
@@ -183,12 +166,9 @@ class OqmdInterface:
             str_tmp += "'" + i + "', "
         str_tmp = str_tmp[0:-2]
 
-
         db = connect(self.dbfile)
-        # db = connect(dbfile)
 
         con = db.connection or db._connect()
-        # cur = con.cursor()
 
         sql_comm = "SELECT value,id FROM text_key_values WHERE key='proto_name' and value in (" + str_tmp + ")"
         df_text_key_values = pd.read_sql_query(
@@ -258,9 +238,9 @@ class OqmdInterface:
             new_elem_list.append(
                 elem_mapping_dict.get(i, i))
 
+        # #####################################################################
         # Preparing Initial Wyckoff parameters to pass to the
         # CellParameters Code
-
 
         # Removing lattice constant parameters, so CellParameters will only
         # optimize the parameters that aren't included in this list
