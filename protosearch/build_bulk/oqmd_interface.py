@@ -6,38 +6,32 @@ Author(s): Raul A. Flores; Kirsten Winther; Meng Zhao
 
 # Import Modules
 from ase.db import connect
-import sqlite3
-
 from pymatgen.core.composition import Composition
-from ase.db import connect
-
-
 from ase.symbols import string2symbols
 import string
-
 import copy
 import pandas as pd
-import numpy as np
-
 from ast import literal_eval
 from protosearch.build_bulk.cell_parameters import CellParameters
 
+
 class OqmdInterface:
 
-    def __init__(self, dbfile):
+    def __init__(self,
+        dbfile,
+        verbose=False,
+        ):
         """Set up OqmdInterface."""
         self.dbfile = dbfile
-
+        self.verbose = verbose
 
     def create_proto_data_set(self,
         chemical_formula=None,
-        formula=None,
-        elements=None,
+        # formula=None,
+        # elements=None,
 
         source=None,
         repetition=None,
-
-        verbose=False,
         ):
         """Create a dataset of unique prototype structures.
 
@@ -79,30 +73,19 @@ class OqmdInterface:
           Switches verbosity of module (not implemented fully now)
         """
         dbfile = self.dbfile
+        verbose = self.verbose
 
         # Argument Checker
-        if verbose:
-            print("Checking arguments")
-
         if chemical_formula is not None:
-            assert type(chemical_formula) == str, "Formula must be given as a string"
+            mess_i = "Formula must be given as a string"
+            assert type(chemical_formula) == str, mess_i
             elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(chemical_formula)
             formula = stoich_formula
             elements = elem_list_ordered
-
-        elif formula is not None and elements is not None:
-            # All good here
-            assert type(formula) == str, "Formula must be given as a string"
-            assert type(elements) == list, "elements must be given as a list"
-
-            pass
         else:
             raise ValueError("ERROR: Couldn't correctly parse input")
 
-        relev_id_list = self.__get_relevant_ids__(
-            formula,
-            source,
-            repetition)
+        relev_id_list = self.__get_relevant_ids__(formula, source, repetition)
 
         db = connect(dbfile)
         data_list = []
