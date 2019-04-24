@@ -274,21 +274,24 @@ class OqmdInterface:
             if param_i in list(init_wyck_params.keys()):
                 del init_wyck_params[param_i]
 
-        # Using CellParameters Code
-        CP = CellParameters(
-            spacegroup=spacegroup_i,
-            wyckoffs=prototype_wyckoffs_i,
-            species=new_elem_list,
-            # species=prototype_species_i,
-            verbose=False,
-            )
+        try:
+            # Using CellParameters Code
+            CP = CellParameters(
+                spacegroup=spacegroup_i,
+                wyckoffs=prototype_wyckoffs_i,
+                species=new_elem_list,
+                # species=prototype_species_i,
+                verbose=False,
+                )
 
-        parameters = CP.get_parameter_estimate(
-            master_parameters=init_wyck_params)
-        atoms_opt = CP.get_atoms(fix_parameters=parameters)
-        atoms_out = atoms_opt
+            parameters = CP.get_parameter_estimate(
+                master_parameters=init_wyck_params)
+            atoms_opt = CP.get_atoms(fix_parameters=parameters)
+            out = atoms_opt
+        except RuntimeError:
+            out = None
 
-        return(atoms_out)
+        return(out)
 
     def get_distinct_prototypes(self,
                                 source=None,
