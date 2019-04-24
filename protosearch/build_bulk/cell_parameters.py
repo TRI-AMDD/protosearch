@@ -187,7 +187,20 @@ class CellParameters:
         else:
             poscar = b.get_std_poscar()
         b.delete()
-        self.atoms = read_vasp(io.StringIO(poscar))
+
+        if poscar == "":
+            # if self.verbose:
+            mess = ("Enumerator failed to create poscar!!!!" + "\n"
+                "RF | not currently certain why this error occurs"
+                " (maybe memory issue? problably not in all cases)"
+                "In any case this error is fatal and nothing else will "
+                "work because of this" + "\n"
+                "More elegent way to handle this error?"
+                )
+            raise RuntimeError(mess)
+
+        else:
+            self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
 
