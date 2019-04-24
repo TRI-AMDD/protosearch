@@ -1,7 +1,7 @@
 """Interace to OQMD data to create structurally unique atoms objects.
 
 
-Author(s): Raul A. Flores; Kirsten Winther
+Author(s): Raul A. Flores; Kirsten Winther; Meng Zhao
 """
 
 # Import Modules
@@ -109,7 +109,8 @@ class OqmdInterface:
         for id_i in relev_id_list:
             row_i = db.get(selection=id_i)
 
-            # Procesing data dict since objects are stored as strings (literal_eval needed)
+            # Procesing data dict since objects are stored as strings
+            # (literal_eval needed)
             data_dict_0 = {}
             for key_i, value_i in row_i.data.items():
                 data_dict_0[key_i] = literal_eval(value_i)
@@ -336,6 +337,7 @@ class OqmdInterface:
             wyckoffs=prototype_wyckoffs_i,
             species=new_elem_list,
             # species=prototype_species_i,
+            verbose=False,
             )
 
         parameters = CP.get_parameter_estimate(
@@ -360,7 +362,6 @@ class OqmdInterface:
         repetition: int
           repetition of the stiochiometry
         """
-        # get_distinct_prototypes
         db = connect(self.dbfile)
 
         con = db.connection or db._connect()
@@ -371,11 +372,11 @@ class OqmdInterface:
         if formula:
             if repetition:
                 formula += '\_{}'.format(repetition)
-            sql_command += " and value like '{}\_%' ESCAPE '\\'".format(formula)
+            sql_comm += " and value like '{}\_%' ESCAPE '\\'".format(formula)
 
         if source:
-             sql_command += " and id in (select id from text_key_values where key='source' and value='icsd')"
-        cur.execute(sql_command)
+             sql_comm += " and id in (select id from text_key_values where key='source' and value='icsd')"
+        cur.execute(sql_comm)
 
         prototypes = cur.fetchall()
         prototypes = [p[0] for p in prototypes]
