@@ -8,6 +8,10 @@ Author(s): Raul A. Flores; Kirsten Winther
 from ase.db import connect
 import sqlite3
 
+from pymatgen.core.composition import Composition
+from ase.db import connect
+
+
 from ase.symbols import string2symbols
 import string
 
@@ -29,6 +33,10 @@ class OqmdInterface:
         chemical_formula=None,
         formula=None,
         elements=None,
+
+        source=None,
+        repetition=None,
+
         verbose=False,
         ):
         """Create a dataset of unique prototype structures.
@@ -76,7 +84,6 @@ class OqmdInterface:
         if verbose:
             print("Checking arguments")
 
-
         if chemical_formula is not None:
             assert type(chemical_formula) == str, "Formula must be given as a string"
             elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(chemical_formula)
@@ -92,194 +99,115 @@ class OqmdInterface:
         else:
             raise ValueError("ERROR: Couldn't correctly parse input")
 
+        relev_id_list = self.__get_relevant_ids__(
+            formula,
+            source,
+            repetition)
 
+        db = connect(dbfile)
+        data_list = []
+        for id_i in relev_id_list:
+            row_i = db.get(selection=id_i)
 
-        if verbose:
-            print("Reading text_key_values table from sql")
+            # Procesing data dict since objects are stored as strings (literal_eval needed)
+            data_dict_0 = {}
+            for key_i, value_i in row_i.data.items():
+                data_dict_0[key_i] = literal_eval(value_i)
 
-        con = sqlite3.connect(dbfile)
-        # df_systems = pd.read_sql_query("SELECT * FROM systems", con)
-        df_text_key_values = pd.read_sql_query(
-            "SELECT * FROM text_key_values", con)
+            data_dict_1 = {
+                "id": row_i.id,
+                "protoname": row_i.proto_name,
+                "formula": row_i.formula,
+                "spacegroup": row_i.spacegroup}
 
-        if verbose:
-            print("Generating protoname --> structure_id dataframe")
+            data_dict_out = {**data_dict_0, **data_dict_1}
+            data_list.append(data_dict_out)
 
-        df_protoid_to_strucid = self.__get_protoid_to_strucid__(
-            df_text_key_values=df_text_key_values,
-            user_stoich=formula,
-            data_file_path=dbfile)
+        df = pd.DataFrame(data_list)
 
-        struct_ids_of_interest = list(np.concatenate(
-            df_protoid_to_strucid["id_list"].tolist()
-            ).ravel())
-
-
-        # #####################################################################
-        # #####################################################################
-        # #####################################################################
-
-        if verbose:
-            print("Reading systems table from sql")
-
-        # Read table from sql
-        dbfile = self.dbfile
-        con = sqlite3.connect(dbfile)
-        df_systems = pd.read_sql_query("SELECT * FROM systems", con)
-
-        df_systems = df_systems.set_index("id", drop=True)
-
-
-        # Drop unnecessary Columns
-        cols_to_drop = [
-            #  'id',
-            #  'unique_id',
-            'ctime',
-            'mtime',
-            'username',
-            'numbers',
-            'positions',
-            'cell',
-            'pbc',
-            'initial_magmoms',
-            'initial_charges',
-            'masses',
-            'tags',
-            'momenta',
-            'constraints',
-            'calculator',
-            'calculator_parameters',
-            'energy',
-            'free_energy',
-            'forces',
-            'stress',
-            'dipole',
-            'magmoms',
-            'magmom',
-            'charges',
-            #  'key_value_pairs',
-            #  'data',
-            'natoms',
-            'fmax',
-            'smax',
-            'volume',
-            'mass',
-            'charge',
-            ]
-
-        df_systems = df_systems.drop(cols_to_drop, 1)
-
-        # Drop rows that aren't of the user defined subset
-        df_systems = df_systems.loc[struct_ids_of_interest]
-
-        # TEMP Sampling DF down for testing purposes
-        # df_systems = df_systems.sample(
-        #     frac=0.3,
-        #     # n=5,
-        #     )
-
-        if verbose:
-            print("Processing systems dataframe to generate Enumerator info")
+        # TEMP
+        df = df[0:15]
 
         data_list = []
-        for i_cnt, row_i in df_systems.iterrows():
-
-            # Processing 'key_value_pairs' column
-            key_value_pairs_str = row_i["key_value_pairs"]
-            key_value_pairs_str = key_value_pairs_str.replace(
-                " NaN,",
-                ' " NaN",')
-
-            try:
-                key_value_pairs_dict = literal_eval(key_value_pairs_str)
-
-            except:
-                print("This error shouldn't be happening!!!! 98ufs8")
-                print(key_value_pairs_str)
-
-                key_value_pairs_dict = {}
-
-            keys_to_delete = [
-                'name',
-                'directory',
-                'energy_pa',
-                'volume',
-                'bandgap',
-                'delta_e',
-                'stability',
-
-                # 'proto_name',
-                # 'spacegroup',
-                # 'source',
-                ]
-
-            for key_i in keys_to_delete:
-                key_value_pairs_dict.pop(key_i, None)
-
-            # Processing 'Data' column
-            data_str = row_i["data"]
-        #     key_value_pairs_str = key_value_pairs_str.replace(" NaN,", ' " NaN",')
-
-            data_dict = literal_eval(data_str)
-
-            prototype_params = literal_eval(data_dict["param"])
-            prototype_species = literal_eval(data_dict["species"])
-            prototype_wyckoffs = literal_eval(data_dict["wyckoffs"])
-
-            data_dict = {
-                "prototype_params": prototype_params,
-                "prototype_species": prototype_species,
-                "prototype_wyckoffs": prototype_wyckoffs,
-                }
-
-            out_dict = {
-                "id": row_i.name,
-                # "id": row_i["id"],
-                **key_value_pairs_dict,
-                **data_dict,
-                }
-            data_list.append(out_dict)
-
-        df_systems = pd.DataFrame(data_list)
-
-        # #####################################################################
-        # #####################################################################
-        # #####################################################################
-
-        if verbose:
-            print("Generating atoms objects")
-
-        data_list = []
-
-        atoms_list_out = []
-        groups = df_systems.groupby("proto_name")
+        groups = df.groupby("protoname")
         for protoname_i, group_i in groups:
+            struct_in_db_i = self.__structure_in_database__(
+                group_i, chemical_formula, "bool")
+            if struct_in_db_i:
+                row_i = self.__structure_in_database__(
+                    group_i, chemical_formula, "return_structure")
 
-            # COMBAK Here I'm just taking the prototype parameters from the
-            # first structure in OQMD, this can be improved with further logic
-            # and tests
-            row_i = group_i.iloc[0]
-
-
-            atoms_i = self.__create_atoms_object_with_replacement__(
-                row_i,
-                user_elems=elements)
-
-            atoms_list_out.append(atoms_i)
-
+                db_row_i = db.get(selection=int(row_i["id"]))
+                atoms_i = db_row_i.toatoms()
+            else:
+                # Just returning the 'first' structure in the group and doing
+                # an atom replacement
+                row_i = group_i.iloc[0]
+                atoms_i = OqmdInterface(dbfile).__create_atoms_object_with_replacement__(
+                    row_i, user_elems=elements)
 
             sys_dict_i = {
-                "proto_name": row_i["proto_name"],
+                "proto_name": row_i["protoname"],
                 "atoms": atoms_i,
-                }
-
+                "existing_structure": struct_in_db_i}
             data_list.append(sys_dict_i)
 
+        df_out = pd.DataFrame(data_list)
 
-        prototype_atoms_dataframe = pd.DataFrame(data_list)
+        return(df_out)
 
-        return(prototype_atoms_dataframe)
+    def __structure_in_database__(self, group_i, chemical_formula, mode):
+        """Looks for existing structure in the db"""
+        group_i["pymatgen_comp"] = group_i.apply(lambda x: Composition(x["formula"]), axis = 1)
+        same_formula = group_i[group_i["pymatgen_comp"] == Composition(chemical_formula)]
 
+        if len(same_formula) != 0:
+            structure_exists = True
+        else:
+            structure_exists = False
+
+        if len(same_formula) > 1:
+            print("There is more than 1 structure in the database for the given prototype and chemical formula")
+            print("Just using the 'first' one for now")
+
+        if mode == "bool":
+            return(structure_exists)
+        elif mode == "return_structure":
+            return(same_formula.iloc[0])
+
+    def __get_relevant_ids__(self,
+        formula,
+        source,
+        repetition,
+        ):
+        """
+        """
+        # distinct_protonames = OqmdInterface(dbfile).get_distinct_prototypes(
+        #     formula=formula)
+        distinct_protonames = self.get_distinct_prototypes(
+            formula=formula,
+            source=source,
+            repetition=repetition)
+
+        str_tmp = ""
+        for i in distinct_protonames:
+            str_tmp += "'" + i + "', "
+        str_tmp = str_tmp[0:-2]
+
+
+        db = connect(self.dbfile)
+        # db = connect(dbfile)
+
+        con = db.connection or db._connect()
+        # cur = con.cursor()
+
+        sql_comm = "SELECT value,id FROM text_key_values WHERE key='proto_name' and value in (" + str_tmp + ")"
+        df_text_key_values = pd.read_sql_query(
+            sql_comm,
+            con)
+
+        relev_id_list = df_text_key_values["id"].tolist()
+        return(relev_id_list)
 
     def __get_protoid_to_strucid__(self,
         df_text_key_values=None,
@@ -331,19 +259,19 @@ class OqmdInterface:
 
         Parameters
         ----------
-        indiv_data_tmp_i: pandas.Series
+        indiv_data_tmp_i: pandas.Series or dict
           Row of dataframe that contains the following keys:
             spacegroup
-            prototype_wyckoffs
-            prototype_species
-            prototype_params
+            wyckoffs
+            species
+            param
 
         user_elems: list
         """
         spacegroup_i = indiv_data_tmp_i["spacegroup"]
-        prototype_wyckoffs_i = indiv_data_tmp_i["prototype_wyckoffs"]
-        prototype_species_i = indiv_data_tmp_i["prototype_species"]
-        init_params = indiv_data_tmp_i["prototype_params"]
+        prototype_wyckoffs_i = indiv_data_tmp_i["wyckoffs"]
+        prototype_species_i = indiv_data_tmp_i["species"]
+        init_params = indiv_data_tmp_i["param"]
 
         # Atom type replacement
         def CountFrequency(my_list):
