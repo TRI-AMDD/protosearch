@@ -193,49 +193,6 @@ class OqmdInterface:
         relev_id_list = df_text_key_values["id"].tolist()
         return(relev_id_list)
 
-    def __get_protoid_to_strucid__(self,
-        df_text_key_values=None,
-        user_stoich=None,
-        data_file_path=None):
-        """
-        """
-        # Getting unique prototype IDs for given constraints
-        # unique_prototype_names = self.get_distinct_prototypes(
-        unique_protonames_for_user = self.get_distinct_prototypes(
-            source=None,
-            formula=user_stoich,
-            repetition=None)
-
-        print(
-            "There are ",
-            str(len(unique_protonames_for_user)),
-            " unique prototypes for the",
-            str(user_stoich), " stoicheometry",
-            " and source of",
-            # str(source),
-            )
-
-        # My method to get the unique prototype ids
-        # Getting unique prototype names
-        # unique_prototype_names = df_text_key_values[
-        #     df_text_key_values["key"] == "proto_name"]["value"].unique()
-
-        df_tmp = df_text_key_values[
-            df_text_key_values["key"] == "proto_name"]
-        df_tmp1 = df_tmp[df_tmp["value"].isin(unique_protonames_for_user)]
-
-        data_list = []
-        group = df_tmp1.groupby(["value"])
-        for protoname_i, df_i in group:
-            data_list.append({
-                "id_list": df_i["id"].tolist(),
-                "protoname": protoname_i,
-                })
-
-        out_df = pd.DataFrame(data_list)
-
-        return(out_df)
-
     def __create_atoms_object_with_replacement__(self,
         indiv_data_tmp_i,
         user_elems=None):
@@ -367,6 +324,19 @@ class OqmdInterface:
         return prototypes
 
 
+# Atom type replacement
+def CountFrequency(my_list):
+    """
+    Python program to count the frequency of
+    elements in a list using a dictionary
+    """
+    freq = {}
+    for item in my_list:
+        if (item in freq):
+            freq[item] += 1
+        else:
+            freq[item] = 1
+    return(freq)
 
 
 def formula2elem(formula):
