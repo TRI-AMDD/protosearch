@@ -6,6 +6,7 @@ Author(s): Raul A. Flores; Kirsten Winther; Meng Zhao
 
 # Import Modules
 from ase.db import connect
+from tqdm import tqdm
 from pymatgen.core.composition import Composition
 from ase.symbols import string2symbols
 import string
@@ -110,7 +111,7 @@ class OqmdInterface:
 
         data_list = []
         groups = df.groupby("protoname")
-        for protoname_i, group_i in groups:
+        for protoname_i, group_i in tqdm(groups):
             struct_in_db_i = self.__structure_in_database__(
                 group_i, chemical_formula, "bool")
             if struct_in_db_i:
