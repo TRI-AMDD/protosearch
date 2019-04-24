@@ -39,6 +39,7 @@ class CellParameters:
         b.set_wyckoff(self.wyckoffs)
         b.set_species(self.species)
         self.parameters = b.get_parameters()
+        b.delete()
 
         self.coor_parameters = []
         self.angle_parameters = []
@@ -163,6 +164,7 @@ class CellParameters:
             poscar = b.get_primitive_poscar()
         else:
             poscar = b.get_std_poscar()
+        b.delete()
         self.atoms = read_vasp(io.StringIO(poscar))
 
         return self.atoms
@@ -180,6 +182,7 @@ class CellParameters:
         sg2 = b2.get_spacegroup()
         w2 = b2.get_wyckoff()
 
+        b2.delete()
         if not sg2 == self.spacegroup:
             print('Symmetry reduced to {} from {}'.format(sg2, self.spacegroup))
             return False
