@@ -106,11 +106,7 @@ class OqmdInterface:
 
             data_dict_out = {**data_dict_0, **data_dict_1}
             data_list.append(data_dict_out)
-
         df = pd.DataFrame(data_list)
-
-        # TEMP
-        df = df[0:15]
 
         data_list = []
         groups = df.groupby("protoname")
@@ -127,7 +123,7 @@ class OqmdInterface:
                 # Just returning the 'first' structure in the group and doing
                 # an atom replacement
                 row_i = group_i.iloc[0]
-                atoms_i = OqmdInterface(dbfile).__create_atoms_object_with_replacement__(
+                atoms_i = self.__create_atoms_object_with_replacement__(
                     row_i, user_elems=elements)
 
             sys_dict_i = {
@@ -142,8 +138,10 @@ class OqmdInterface:
 
     def __structure_in_database__(self, group_i, chemical_formula, mode):
         """Looks for existing structure in the db"""
-        group_i["pymatgen_comp"] = group_i.apply(lambda x: Composition(x["formula"]), axis = 1)
-        same_formula = group_i[group_i["pymatgen_comp"] == Composition(chemical_formula)]
+        group_i["pymatgen_comp"] = group_i.apply(
+            lambda x: Composition(x["formula"]), axis=1)
+        same_formula = group_i[
+            group_i["pymatgen_comp"] == Composition(chemical_formula)]
 
         if len(same_formula) != 0:
             structure_exists = True
@@ -151,7 +149,8 @@ class OqmdInterface:
             structure_exists = False
 
         if len(same_formula) > 1:
-            print("There is more than 1 structure in the database for the given prototype and chemical formula")
+            print("There is more than 1 structure in the database for the",
+                " given prototype and chemical formula")
             print("Just using the 'first' one for now")
 
         if mode == "bool":
@@ -172,6 +171,10 @@ class OqmdInterface:
             formula=formula,
             source=source,
             repetition=repetition)
+
+        if self.verbose:
+            print("Number of unique prototypes: ")
+            print(len(distinct_protonames))
 
         str_tmp = ""
         for i in distinct_protonames:
@@ -307,7 +310,7 @@ class OqmdInterface:
         con = db.connection or db._connect()
         cur = con.cursor()
 
-        sql_command = \
+        sql_comm = \
             "select distinct value from text_key_values where key='proto_name'"
         if formula:
             if repetition:
