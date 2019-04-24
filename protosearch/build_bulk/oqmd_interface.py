@@ -12,6 +12,7 @@ from ase.symbols import string2symbols
 import string
 import copy
 import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
 from ast import literal_eval
 from protosearch.build_bulk.cell_parameters import CellParameters
 
