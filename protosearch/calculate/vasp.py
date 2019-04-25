@@ -16,6 +16,7 @@ class VaspModel:
         if calc_parameters is not None:
             self.calc_parameters.update(calc_parameters)
         self.natoms = len(symbols)
+        self.all_symbols = symbols
         self.symbols = set(symbols)
         self.ncpus = ncpus
         self.setups = {}
@@ -160,8 +161,7 @@ class VaspModel:
         valence electrons listed in utils/valence.py"""
 
         N_val = 0
-
-        for symbol in self.symbols:
+        for symbol in self.all_symbols:
             if symbol in self.setups:
                 setup = self.setups[symbol]
             else:
