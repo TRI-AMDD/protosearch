@@ -125,12 +125,13 @@ class TriSubmit():
         path_ext += [species_wyckoffs_id]
         # cell parameters
         cell_param_id = ''
-        for cell_key, cell_value in zip(self.cell_param_list,
-                                        self.cell_value_list):
+        if len(self.cell_param_list) < 10:
+            for cell_key, cell_value in zip(self.cell_param_list,
+                                            self.cell_value_list):
 
-            cell_param_id += '{}{}'.format(cell_key, round(cell_value, 4)).\
-                replace('c/a', 'c').replace('b/a', 'b').\
-                replace('.', 'D').replace('-', 'M')
+                cell_param_id += '{}{}'.format(cell_key, round(cell_value, 4)).\
+                    replace('c/a', 'c').replace('b/a', 'b').\
+                    replace('.', 'D').replace('-', 'M')
 
         path_ext += [cell_param_id]
 
