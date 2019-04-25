@@ -8,6 +8,7 @@ from ase.io import read
 import sqlite3
 
 from protosearch.utils import get_basepath
+from protosearch.utils.standards import VaspStandards
 from protosearch.build_bulk.classification import get_classification
 
 init_commands = [
@@ -163,3 +164,13 @@ class PrototypeSQL:
         name = cur.fetchall()[0]
 
         return name
+
+    def is_calculated(self, formula, p_name):
+        con = self.connection or self._connect()
+        if self.ase_db.count(formula=formula,
+                             p_name=p_name,
+                             error=0) > 0:
+            print('Allready calculated')
+            return True
+        else:
+            return False

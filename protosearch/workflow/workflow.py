@@ -24,6 +24,7 @@ class Workflow(PrototypeSQL):
         db_filename = self.basepath + '/prototypes.db'
 
         super().__init__(filename=db_filename)
+        self._connect()
 
         self.collected = False
 
@@ -64,12 +65,15 @@ class Workflow(PrototypeSQL):
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
                        prototype['species'],
+                       cell_parameters=cell_parameters
                        )
 
         atoms = BB.get_atoms_from_poscar()
         formula = atoms.get_chemical_formula()
 
-        if self.ase_db.count(formula=formula, p_name=prototype['p_name'])
+        if self.is_calculated(formula=formula,
+                              p_name=prototype['p_name']):
+            return
 
         Sub = TriSubmit(atoms=atoms,
                         ncpus=ncpus,
@@ -106,6 +110,7 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs.update({'relaxed': 0,
                                 'completed': 0,
+                                'error': 0,
                                 'submitted': 1})
 
         self.ase_db.write(atoms, key_value_pairs)
@@ -132,7 +137,6 @@ class Workflow(PrototypeSQL):
                     param_dict = {}
                     with open(root + '/param', 'r') as f:
                         param = f.read().lstrip('/').rstrip('\n')
-                        print(param)
                         param_values = param.split('/')
                         for i, param_key in enumerate(VaspStandards.sorted_calc_parameters):
                             param_dict[param_key] = param_values[i]
@@ -157,11 +161,9 @@ class Workflow(PrototypeSQL):
 
                         key_value_pairs = clean_key_value_pairs(
                             key_value_pairs)
-                        print(key_value_pairs)
+
                         with open(root + '/err', 'r') as errorf:
                             message = errorf.read().replace("'", '')
-                            #data = json.dumps({'error': message})
-                            # print(data)
 
                         self.ase_db.update(id=calcid,
                                            **key_value_pairs,
@@ -169,12 +171,17 @@ class Workflow(PrototypeSQL):
                         errored += 1
                         continue
 
-                    atoms = ase.io.read(root + '/OUTCAR')
+                    try:
+                        atoms = ase.io.read(root + '/OUTCAR')
+                    except:
+                        print("Couldn't read OUTCAR")
+                        continue
 
                     prototype, cell_parameters = get_classification(atoms)
 
                     key_value_pairs = {'relaxed': 1,
                                        'completed': 1,
+                                       'error': 0,
                                        'submitted': 1,
                                        'path': path,
                                        'runpath': root}
