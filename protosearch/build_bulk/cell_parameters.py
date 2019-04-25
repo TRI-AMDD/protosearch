@@ -353,7 +353,7 @@ class CellParameters:
 
         return self.parameter_guess
 
-    def get_lattice_constants(self, fix_parameters={}, proximity=1.0):
+    def get_lattice_constants(self, fix_parameters={}, proximity=1.15):
         """
         Get lattice constants by reducing the cell size (one direction at
         the time) until atomic distances on the closest pair reaches the
