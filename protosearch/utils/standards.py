@@ -86,7 +86,7 @@ class VaspStandards():
                       'Lu': '_3',
                       'Hf': '_pv',
                       'Ta': '_pv',
-                      'W': '_sv',
+                      'W': '_pv',
                       'Tl': '_d',
                       'Pb': '_d',
                       'Bi': '_d',
