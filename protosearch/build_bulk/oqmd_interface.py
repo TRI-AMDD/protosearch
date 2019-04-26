@@ -1,10 +1,11 @@
 
+from protosearch.build_bulk.cell_parameters import CellParameters
+from ast import literal_eval
 """Interace to OQMD data to create structurally unique atoms objects.
 
 
 Author(s): Raul A. Flores; Kirsten Winther; Meng Zhao
 """
-
 from ase.db import connect
 from tqdm import tqdm
 from pymatgen.core.composition import Composition
@@ -13,16 +14,14 @@ import string
 import copy
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
-from ast import literal_eval
-from protosearch.build_bulk.cell_parameters import CellParameters
 
 
 class OqmdInterface:
 
     def __init__(self,
-        dbfile,
-        verbose=False,
-        ):
+                 dbfile,
+                 verbose=False,
+                 ):
         """Set up OqmdInterface.
 
         Parameters
@@ -38,9 +37,9 @@ class OqmdInterface:
         self.verbose = verbose
 
     def create_proto_data_set(self,
-        chemical_formula=None,
-        source=None,
-        repetition=None):
+                              chemical_formula=None,
+                              source=None,
+                              repetition=None):
         """Create a dataset of unique prototype structures.
 
         Creates a unique set of structures of uniform stoicheometry and
@@ -66,7 +65,8 @@ class OqmdInterface:
         if chemical_formula is not None:
             mess_i = "Formula must be given as a string"
             assert type(chemical_formula) == str, mess_i
-            elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(chemical_formula)
+            elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
+                chemical_formula)
             formula = stoich_formula
             elements = elem_list_ordered
         else:
@@ -137,7 +137,7 @@ class OqmdInterface:
 
         if len(same_formula) > 1:
             print("There is more than 1 structure in the database for the",
-                " given prototype and chemical formula")
+                  " given prototype and chemical formula")
             print("Just using the 'first' one for now")
 
         if mode == "bool":
@@ -146,10 +146,10 @@ class OqmdInterface:
             return(same_formula.iloc[0])
 
     def __get_relevant_ids__(self,
-        formula,
-        source,
-        repetition,
-        ):
+                             formula,
+                             source,
+                             repetition,
+                             ):
         """
         """
         distinct_protonames = self.get_distinct_prototypes(
@@ -170,7 +170,8 @@ class OqmdInterface:
 
         con = db.connection or db._connect()
 
-        sql_comm = "SELECT value,id FROM text_key_values WHERE key='proto_name' and value in (" + str_tmp + ")"
+        sql_comm = "SELECT value,id FROM text_key_values WHERE key='proto_name' and value in (" + \
+            str_tmp + ")"
         df_text_key_values = pd.read_sql_query(
             sql_comm,
             con)
@@ -179,8 +180,8 @@ class OqmdInterface:
         return(relev_id_list)
 
     def __create_atoms_object_with_replacement__(self,
-        indiv_data_tmp_i,
-        user_elems=None):
+                                                 indiv_data_tmp_i,
+                                                 user_elems=None):
         """
 
         Parameters
@@ -214,7 +215,6 @@ class OqmdInterface:
 
             return(freq)
 
-
         elem_count_freq = CountFrequency(prototype_species_i)
 
         freq_data_list = []
@@ -223,14 +223,14 @@ class OqmdInterface:
                 {
                     "element": key_i,
                     "frequency": value_i,
-                    }
-                )
+                }
+            )
 
         elem_mapping_dict = dict(zip(
             pd.DataFrame(freq_data_list).sort_values(
                 by=["frequency"])["element"].tolist(),
             user_elems,
-            ))
+        ))
 
         # Preparing new atom substituted element list
         new_elem_list = []
@@ -249,7 +249,7 @@ class OqmdInterface:
             "a", "b", "c",
             "b/a", "c/a",
             # "alpha", "beta", "gamma",
-            ]
+        ]
 
         init_wyck_params = copy.copy(init_params)
         for param_i in non_wyck_params:
@@ -264,7 +264,7 @@ class OqmdInterface:
                 species=new_elem_list,
                 # species=prototype_species_i,
                 verbose=False,
-                )
+            )
 
             parameters = CP.get_parameter_estimate(
                 master_parameters=init_wyck_params)
@@ -308,51 +308,13 @@ class OqmdInterface:
             sql_comm += " and value like '{}\_%' ESCAPE '\\'".format(formula)
 
         if source:
-             sql_comm += " and id in (select id from text_key_values where key='source' and value='icsd')"
+            sql_comm += " and id in (select id from text_key_values where key='source' and value='icsd')"
         cur.execute(sql_comm)
 
         prototypes = cur.fetchall()
         prototypes = [p[0] for p in prototypes]
 
         return prototypes
-
-
-    def get_structures(self, source, formula, max_atoms=None):
-        """
-        Parameters
-        ----------
-        source: str
-          oqmd project name, such as 'icsd'
-        formula: str
-          chemical formula with atoms such as 'TiO2'
-        max_atoms: int
-           maximum number of atoms in cell 
-        """
-
-        # Get prototype AB formula from chemical formula
-        elem_list, compos, stoich_formula, elem_list_ordered = \
-            formula2elem(chemical_formula)
-        # Get repetition from max_atoms?
-        repetition = 1
-        
-        prototypes = get_distinct_prototypes(source=source,
-                                             formula=prototype_formula,
-                                             repetition=repetition)
-
-        # Query db - is this structure present?
-        db = connect(self.dbfile)
-        for prototype in prototypes:
-            
-
-        # If not - replace atoms in list and get new lattice parameters
-
-        ### return all atoms in list ###
-        # Dummy atoms to test the workflow
-        atoms_list = []
-        for dummy_atom in self.db.select(source='icsd', limit=3):
-            atoms_list += [dummy_atoms]
-
-        return atoms_list
 
 
 # Atom type replacement
@@ -388,7 +350,6 @@ def formula2elem(formula):
     for symbol in uniq:
         compos.update({symbol: elem_list.count(symbol)})
 
-
     # Creating stoicheometric repr of formula (i.e. AB2 not FeO2)
     data_list = []
     for key_i, value_i in compos.items():
@@ -415,4 +376,3 @@ def formula2elem(formula):
             stoich_formula += str(row_i["stoich"])
 
     return(elem_list, compos, stoich_formula, elem_list_ordered)
->>>>>>> upstream/master

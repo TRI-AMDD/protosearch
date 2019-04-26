@@ -31,6 +31,12 @@ class BuildBulkTest(unittest.TestCase):
         print(p)
         print('{} distinct prototypes found'.format(len(p)))
 
+    def test_create_proto_dataset(self):
+        path = sys.path[0]
+        O = OqmdInterface(dbfile=path + '/oqmd_ver3.db')
+        atoms_list = O.create_proto_data_set(source='icsd',
+                                             chemical_formula='TiO2',
+                                             repetition=1)
 
     def test_lattice_parameters(self, id=63872):
         path = sys.path[0]
@@ -38,7 +44,7 @@ class BuildBulkTest(unittest.TestCase):
         atoms = db.get(id=id).toatoms()
         prototype, parameters = get_classification(atoms)
 
-        for p in ['a','b','c']:
+        for p in ['a', 'b', 'c']:
             if p in parameters:
                 del parameters[p]
 
@@ -47,7 +53,7 @@ class BuildBulkTest(unittest.TestCase):
                             prototype['species'])
 
         parameters = CP.get_parameter_estimate(
-                            master_parameters=parameters)
+            master_parameters=parameters)
         atoms = CP.get_atoms(fix_parameters=parameters)
 
         assert np.isclose(atoms.get_volume(), 943.65, rtol=1e-4)

@@ -174,12 +174,12 @@ class CellParameters:
 
         if poscar == "":
             mess = ("Enumerator failed to create poscar!!!!" + "\n"
-                "RF | Not currently certain why this error occurs"
-                " (maybe memory issue? problably not in all cases)" + "\n"
-                "In any case this error is fatal and nothing else will "
-                "work because of this" + "\n"
-                "More elegent way to handle this error?"
-                )
+                    "RF | Not currently certain why this error occurs"
+                    " (maybe memory issue? problably not in all cases)" + "\n"
+                    "In any case this error is fatal and nothing else will "
+                    "work because of this" + "\n"
+                    "More elegent way to handle this error?"
+                    )
             raise RuntimeError(mess)
 
         else:
