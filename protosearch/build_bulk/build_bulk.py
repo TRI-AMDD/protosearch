@@ -85,3 +85,17 @@ class BuildBulk(CellParameters):
         atoms = read_vasp(io.StringIO(self.poscar))
 
         return atoms
+
+    def get_prototype_name(self):
+        if self.prototype_name:
+            return self.prototype_name
+
+        b = be.bulk.BULK()
+        b.set_spacegroup(self.spacegroup)
+        b.set_wyckoff(self.wyckoffs)
+        b.set_species(self.species)
+
+        b.set_parameter_values(self.cell_param_list, self.cell_value_list)
+        self.prototype_name = b.get_name()
+
+        return self.prototype_name
