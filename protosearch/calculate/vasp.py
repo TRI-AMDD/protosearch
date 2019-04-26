@@ -220,17 +220,13 @@ def add_singlepoint(modelstr):
         """
 path = sys.path[0]
 
-if not os.path.isfile(path + '/completed'):
-    sys.exit()
-
 atoms = read('OUTCAR')
 
-for (root, dir, file) in os.walk(path):
-    if file == 'model.py':
-        continue
-    os.rename('{}/{}'.format(path, file), '{}/{}.old'.format(path, file))
+for file in ['INCAR', 'OUTCAR']:
+    os.rename('{}'.format(file), '{}.relax'.format(file))
 
 calc.set(nsw=0)
+
 calc.calculate(atoms)
 """
     return modelstr
