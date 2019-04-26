@@ -265,7 +265,8 @@ class OqmdInterface:
 
             parameters = CP.get_parameter_estimate(
                 master_parameters=init_wyck_params)
-            atoms_opt = CP.get_atoms(fix_parameters=parameters)
+            atoms_opt = CP.get_atoms(fix_parameters=parameters,
+                                     primitive=True)
             out = atoms_opt
         except RuntimeError:
             out = None
