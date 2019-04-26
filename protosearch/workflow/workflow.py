@@ -14,6 +14,9 @@ from .prototype_db import PrototypeSQL
 
 
 class Workflow(PrototypeSQL):
+    """Submits calculations with TriSubmit, and tracks the calculations
+    in an ASE db. 
+    """
 
     def __init__(self,
                  calculator='vasp',
@@ -25,7 +28,6 @@ class Workflow(PrototypeSQL):
 
         super().__init__(filename=db_filename)
         self._connect()
-
         self.collected = False
 
     def _collect(self):
@@ -33,15 +35,15 @@ class Workflow(PrototypeSQL):
             return
         subprocess.call('trisync', cwd=self.basepath)
         self.collected = True
-        # self.check_submissions()
-        # self.rerun_failed_calculations()
 
     def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None):
+        """Submit a batch of calculations. Takes a list of atoms
+        objects as input"""
         for atoms in atoms_list:
             self.submit_atoms(atoms, ncpus, calc_parameters)
 
     def submit_atoms(self, atoms, ncpus=1, calc_parameters=None):
-
+        """Submit a calculation for an atoms object"""
         prototype, parameters = get_classification(atoms)
 
         Sub = TriSubmit(atoms=atoms,
@@ -60,6 +62,8 @@ class Workflow(PrototypeSQL):
         self.write_submission(key_value_pairs)
 
     def submit(self, prototype, ncpus=1, calc_parameters=None):
+        """Submit a calculation for a prototype, generating atoms
+        with build_bulk and enumerator"""
         cell_parameters = prototype.get('parameters', None)
 
         BB = BuildBulk(prototype['spacegroup'],
@@ -69,10 +73,11 @@ class Workflow(PrototypeSQL):
                        )
 
         atoms = BB.get_atoms_from_poscar()
+        p_name = BB.get_prototype_name()
         formula = atoms.get_chemical_formula()
 
         if self.is_calculated(formula=formula,
-                              p_name=prototype['p_name']):
+                              p_name=p_name):
             return
 
         Sub = TriSubmit(atoms=atoms,
@@ -92,9 +97,13 @@ class Workflow(PrototypeSQL):
 
     def submit_enumerated(self, map_species, selection={}):
         """
-        map_species = {'A0': 'Fe', 'A1': 'O'} 
-
-        selection = {'spacegroup': 166, natom=3}
+        Submit a collection of enumeated prototypes.
+        Parameters:
+        ----------
+        map_species: dict
+          map A0, A1, etc to species. F.ex: {'A0': 'Fe', 'A1': 'O'} 
+        selection: dict
+          ase db selection. F.ex: {'spacegroup': 166, natom=3}
         """
 
         prototypes = self.select(**selection)
@@ -103,6 +112,7 @@ class Workflow(PrototypeSQL):
             self.submit(prototype)
 
     def write_submission(self, key_value_pairs):
+        """Track submitted job in database"""
         con = self.connection or self._connect()
         self._initialize(con)
 
@@ -110,102 +120,110 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs.update({'relaxed': 0,
                                 'completed': 0,
-                                'error': 0,
                                 'submitted': 1})
 
         self.ase_db.write(atoms, key_value_pairs)
 
     def check_submissions(self):
-        self._collect()
+        """Check for completed jobs"""
+        if not self.collected:
+            self._collect()
         con = self.connection or self._connect()
         self._initialize(con)
 
-        completed = 0
-        errored = 0
+        status_count = {'completed': 0,
+                        'running': 0,
+                        'errored': 0}
 
         for d in self.ase_db.select(completed=0):
             path = d.path + '/simulation'
             calcid = d.id
-            for root, dirs, files in os.walk(path):
-                if 'INCAR' in files and 'finalized' in files:
-                    # Finished running
+            status = self.check_job_status(path, calcid)
+            status_count[status] += 1
 
-                    if self.ase_db.count(runpath=root) > 0:
-                        print('Already in db')
-                        continue
-
-                    param_dict = {}
-                    with open(root + '/param', 'r') as f:
-                        param = f.read().lstrip('/').rstrip('\n')
-                        param_values = param.split('/')
-                        for i, param_key in enumerate(VaspStandards.sorted_calc_parameters):
-                            param_dict[param_key] = param_values[i]
-
-                    if 'completed' in files:
-                        # Calculation completed - now save everything
-                        self.ase_db.update(id=calcid,
-                                           completed=1)
-                        completed += 1
-
-                    elif 'err' in files:
-                        # Job crashed
-                        key_value_pairs = {'error': 1,
-                                           'runpath': root}
-
-                        atoms = ase.io.read(root + '/initial.POSCAR')
-                        prototype, cell_parameters = get_classification(atoms)
-
-                        key_value_pairs.update(prototype)
-                        key_value_pairs.update(cell_parameters)
-                        key_value_pairs.update(param_dict)
-
-                        key_value_pairs = clean_key_value_pairs(
-                            key_value_pairs)
-
-                        with open(root + '/err', 'r') as errorf:
-                            message = errorf.read().replace("'", '')
-
-                        self.ase_db.update(id=calcid,
-                                           **key_value_pairs,
-                                           data={'error': message})
-                        errored += 1
-                        continue
-
-                    try:
-                        atoms = ase.io.read(root + '/OUTCAR')
-                    except:
-                        print("Couldn't read OUTCAR")
-                        continue
-
-                    prototype, cell_parameters = get_classification(atoms)
-
-                    key_value_pairs = {'relaxed': 1,
-                                       'completed': 1,
-                                       'error': 0,
-                                       'submitted': 1,
-                                       'path': path,
-                                       'runpath': root}
-
-                    key_value_pairs.update(prototype)
-                    key_value_pairs.update(cell_parameters)
-                    key_value_pairs.update(param_dict)
-
-                    key_value_pairs = clean_key_value_pairs(key_value_pairs)
-
-                    atoms = set_calculator_info(atoms, param_dict)
-
-                    self.ase_db.write(atoms, key_value_pairs)
-
-        print('Found {} completed and {} failed calculations'.
-              format(completed, errored))
+        print('Status for calculations:')
+        for status, value in status_count.items():
+            print('  {} {}'.format(value, status))
         return
+
+    def check_job_status(self, path, calcid):
+        for root, dirs, files in os.walk(path):
+            if 'monitor.sh' in files and not 'finalized' in files:
+                status = 'running'
+                break
+            elif 'monitor.sh' in files and 'err' in files:
+                status = 'errored'
+                self.save_failed_calculation(root, calcid)
+                break
+
+            elif 'monitor.sh' in files and 'completed' in files:
+                # Calculation completed - now save everything
+                try:  # Sometimes outcar is corrupted
+                    atoms = ase.io.read(root + '/OUTCAR')
+                    status = 'completed'
+                    self.save_completed_calculation(atoms,
+                                                    path,
+                                                    runpath,
+                                                    calcid)
+                except:
+                    print("Couldn't read OUTCAR")
+                    status = 'errored'
+                    self.save_failed_calculations(root, calcid)
+                break
+
+        return status
+
+    def save_completed_calculation(self, atoms, path, runpath, calcid):
+
+        self.ase_db.update(id=calcid,
+                           completed=1)
+        param_dict = params2dict(runpath + '/param')
+        prototype, cell_parameters = get_classification(atoms)
+
+        key_value_pairs = {'relaxed': 1,
+                           'completed': 1,
+                           'submitted': 1,
+                           'path': path,
+                           'runpath': root}
+
+        key_value_pairs.update(prototype)
+        key_value_pairs.update(cell_parameters)
+        key_value_pairs.update(param_dict)
+
+        key_value_pairs = clean_key_value_pairs(key_value_pairs)
+
+        atoms = set_calculator_info(atoms, param_dict)
+
+        self.ase_db.write(atoms, key_value_pairs)
+
+    def save_failed_calculation(self, runpath, calcid):
+
+        key_value_pairs = {'completed': -1,
+                           'runpath': runpath}
+        param_dict = params2dict(runpath + '/param')
+        atoms = ase.io.read(runpath + '/initial.POSCAR')
+        prototype, cell_parameters = get_classification(atoms)
+
+        key_value_pairs.update(prototype)
+        key_value_pairs.update(cell_parameters)
+        key_value_pairs.update(param_dict)
+
+        key_value_pairs = clean_key_value_pairs(
+            key_value_pairs)
+
+        with open(runpath + '/err', 'r') as errorf:
+            message = errorf.read().replace("'", '')
+
+            self.ase_db.update(id=calcid,
+                               **key_value_pairs,
+                               data={'error': message})
 
     def rerun_failed_calculations(self):
         self._collect()
         con = self.connection or self._connect()
         self._initialize(con)
 
-        for d in self.ase_db.select(error=1):
+        for d in self.ase_db.select(completed=-1):
             resubmit, handle = vasp_errors(error)
             if not resubmit:
                 print('Job errored: {}'.format(handle))
@@ -260,3 +278,14 @@ def vasp_errors(error):
         return False, 'Vasp failed'
     elif 'Vasp exited' in error:
         return True, 'ncpus'
+
+
+def params2dict(paramfile):
+    param_dict = {}
+    with open(paramfile, 'r') as f:
+        param = f.read().lstrip('/').rstrip('\n')
+        param_values = param.split('/')
+        for i, param_key in enumerate(VaspStandards.sorted_calc_parameters):
+            param_dict[param_key] = param_values[i]
+
+    return param_dict
