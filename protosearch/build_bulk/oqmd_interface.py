@@ -1,11 +1,6 @@
+__authors__ = "Raul A. Flores; Kirsten Winther; Meng Zhao"
 
-from protosearch.build_bulk.cell_parameters import CellParameters
 from ast import literal_eval
-"""Interace to OQMD data to create structurally unique atoms objects.
-
-
-Author(s): Raul A. Flores; Kirsten Winther; Meng Zhao
-"""
 from ase.db import connect
 from tqdm import tqdm
 from pymatgen.core.composition import Composition
@@ -15,8 +10,10 @@ import copy
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 
+from protosearch.build_bulk.cell_parameters import CellParameters
 
 class OqmdInterface:
+    """Interace to OQMD data to create structurally unique atoms objects"""
 
     def __init__(self,
                  dbfile,
