@@ -4,6 +4,7 @@ import os
 import numpy as np
 import tempfile
 import unittest
+import ase
 from ase.db import connect
 
 from protosearch.build_bulk.oqmd_interface import OqmdInterface
@@ -35,8 +36,13 @@ class BuildBulkTest(unittest.TestCase):
         path = sys.path[0]
         O = OqmdInterface(dbfile=path + '/oqmd_ver3.db')
         atoms_list = O.create_proto_data_set(source='icsd',
-                                             chemical_formula='TiO2',
+                                             chemical_formula='FeO6',
                                              repetition=1)
+        for atoms in atoms_list["atoms"][:5]:
+            assert atoms.get_number_of_atoms() == 7
+            assert atoms.get_chemical_symbols().count('Fe') == 1
+            assert atoms.get_chemical_symbols().count('O') == 6
+            ase.visualize.view(atoms)
 
     def test_lattice_parameters(self, id=63872):
         path = sys.path[0]
@@ -55,8 +61,11 @@ class BuildBulkTest(unittest.TestCase):
         parameters = CP.get_parameter_estimate(
             master_parameters=parameters)
         atoms = CP.get_atoms(fix_parameters=parameters)
+        assert np.isclose(atoms.get_volume(), 1594.64, rtol=1e-4)
 
-        assert np.isclose(atoms.get_volume(), 943.65, rtol=1e-4)
+        atoms = CP.get_atoms(fix_parameters=parameters,
+                             primitive=True)
+        assert np.isclose(atoms.get_volume(), 797.32, rtol=1e-4)
 
 
 if __name__ == '__main__':
