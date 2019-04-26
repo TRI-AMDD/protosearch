@@ -38,6 +38,8 @@ class BuildBulkTest(unittest.TestCase):
         atoms_list = O.create_proto_data_set(source='icsd',
                                              chemical_formula='FeO6',
                                              repetition=1)
+        # This test currently fails. There is 6 Fe instead of 6 O.
+        # Need to fix atom substitution part.
         for atoms in atoms_list["atoms"][:5]:
             assert atoms.get_number_of_atoms() == 7
             assert atoms.get_chemical_symbols().count('Fe') == 1
