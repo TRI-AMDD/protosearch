@@ -62,10 +62,14 @@ class OqmdInterface:
         if chemical_formula is not None:
             mess_i = "Formula must be given as a string"
             assert type(chemical_formula) == str, mess_i
-            elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
-                chemical_formula)
+            stoich_formula = formula2elem(chemical_formula)
+
+            # elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
+            #     chemical_formula)
+
             formula = stoich_formula
-            elements = elem_list_ordered
+            # elements = elem_list_ordered
+
         else:
             raise ValueError("ERROR: Couldn't correctly parse input")
 
@@ -108,7 +112,7 @@ class OqmdInterface:
                 # an atom replacement
                 row_i = group_i.iloc[0]
                 atoms_i = self.__create_atoms_object_with_replacement__(
-                    row_i, user_elems=elements)
+                    row_i, chemical_formula=chemical_formula)
 
             sys_dict_i = {
                 "proto_name": row_i["protoname"],
@@ -177,13 +181,13 @@ class OqmdInterface:
         return(relev_id_list)
 
     def __create_atoms_object_with_replacement__(self,
-                                                 indiv_data_tmp_i,
-                                                 user_elems=None):
+                                                 sys_dict_i,
+                                                 chemical_formula=None):
         """
 
         Parameters
         ----------
-        indiv_data_tmp_i: pandas.Series or dict
+        sys_dict_i: pandas.Series or dict
           Row of dataframe that contains the following keys:
             spacegroup
             wyckoffs
@@ -192,42 +196,13 @@ class OqmdInterface:
 
         user_elems: list
         """
-        spacegroup_i = indiv_data_tmp_i["spacegroup"]
-        prototype_wyckoffs_i = indiv_data_tmp_i["wyckoffs"]
-        prototype_species_i = indiv_data_tmp_i["species"]
-        init_params = indiv_data_tmp_i["param"]
+        spacegroup_i = sys_dict_i["spacegroup"]
+        prototype_wyckoffs_i = sys_dict_i["wyckoffs"]
+        prototype_species_i = sys_dict_i["species"]
+        init_params = sys_dict_i["param"]
+        formula = sys_dict_i["formula"]
 
-        # Atom type replacement
-        def CountFrequency(my_list):
-            """
-            Python program to count the frequency of
-            elements in a list using a dictionary
-            """
-            freq = {}
-            for item in my_list:
-                if (item in freq):
-                    freq[item] += 1
-                else:
-                    freq[item] = 1
-
-            return(freq)
-
-        elem_count_freq = CountFrequency(prototype_species_i)
-
-        freq_data_list = []
-        for key_i, value_i in elem_count_freq.items():
-            freq_data_list.append(
-                {
-                    "element": key_i,
-                    "frequency": value_i,
-                }
-            )
-
-        elem_mapping_dict = dict(zip(
-            pd.DataFrame(freq_data_list).sort_values(
-                by=["frequency"])["element"].tolist(),
-            user_elems,
-        ))
+        elem_mapping_dict = self.get_elem_mapping(chemical_formula, formula)
 
         # Preparing new atom substituted element list
         new_elem_list = []
@@ -314,20 +289,60 @@ class OqmdInterface:
 
         return prototypes
 
+    def get_elem_mapping(self, formula0, formula1):
+        """
+        Parameters
+        ----------
+        formula0: str
+          Primary chemical formula, formula1 will be transformed into
+          formula0's element types
+          Will be dict values of output
 
-# Atom type replacement
-def CountFrequency(my_list):
-    """
-    Python program to count the frequency of
-    elements in a list using a dictionary
-    """
-    freq = {}
-    for item in my_list:
-        if (item in freq):
-            freq[item] += 1
-        else:
-            freq[item] = 1
-    return(freq)
+        formula1: str
+          Secondary chemical formula, species will be transformed into the
+          corresponding element of formula0
+        """
+        Comp0 = Composition(formula0).to_data_dict["reduced_cell_composition"]
+        Comp1 = Composition(formula1).to_data_dict["reduced_cell_composition"]
+
+        mess_i = "Not the same number of element types in both species"
+        assert len(Comp0) == len(Comp1), mess_i
+
+        # ##############################################################
+        num_species = len(Comp0)
+        num_unique_stoich = len(list(set(list(Comp0.values()))))
+        if num_unique_stoich != num_species:
+            if self.verbose:
+                print(
+                    "The formula has two species with the same stoicheometry",
+                    " (ex. A2B4C4)." + "\n",
+                    "This results in a little ambiguity as to how to replace",
+                    " the atoms into these species." + "\n",
+                    " This should be implemented better in the future." + "\n",
+                    "Raul A. Flores (190428)",
+                    )
+
+        df_0 = pd.DataFrame(
+            data={
+                "keys": list(Comp0.keys()),
+                "vals": list(Comp0.values())},
+            index=None).sort_values("vals", axis=0)
+
+        df_1 = pd.DataFrame(
+            data={
+                "keys": list(Comp1.keys()),
+                "vals": list(Comp1.values())},
+            index=None).sort_values("vals", axis=0)
+
+        mess_i = "Stoicheometries don't match!!! (ex. A2B4C3 != A2B5C3)"
+        assert df_0["vals"].tolist() == df_1["vals"].tolist(), mess_i
+
+        elem_mapping_dict = dict(zip(
+            df_1["keys"].tolist(),
+            df_0["keys"].tolist()))
+
+        return(elem_mapping_dict)
+
 
 
 def formula2elem(formula):
