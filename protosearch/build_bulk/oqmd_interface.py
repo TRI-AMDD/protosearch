@@ -56,7 +56,7 @@ class OqmdInterface:
           repetition of the stiochiometry
         """
         dbfile = self.dbfile
-        verbose = self.verbose
+        # verbose = self.verbose
 
         # Argument Checker
         if chemical_formula is not None:
@@ -229,7 +229,7 @@ class OqmdInterface:
             "a", "b", "c",
             "b/a", "c/a",
             # "alpha", "beta", "gamma",
-        ]
+            ]
 
         init_wyck_params = copy.copy(init_params)
         for param_i in non_wyck_params:
@@ -242,9 +242,8 @@ class OqmdInterface:
                 spacegroup=spacegroup_i,
                 wyckoffs=prototype_wyckoffs_i,
                 species=new_elem_list,
-                # species=prototype_species_i,
                 verbose=False,
-            )
+                )
 
             parameters = CP.get_parameter_estimate(
                 master_parameters=init_wyck_params)
@@ -386,7 +385,8 @@ def formula2elem(formula):
     # compatability with the way I wrote the module, can clean up later
     # This includes the stoich_formula variable that I'm creating as well,
     # it's also needed for my method
-    elem_list_ordered = list(reversed(df_sorted["element"].tolist()))
+
+    # elem_list_ordered = list(reversed(df_sorted["element"].tolist()))
 
     stoich_formula = ""
     for i_ind, row_i in df_sorted.iterrows():
@@ -396,4 +396,4 @@ def formula2elem(formula):
         else:
             stoich_formula += str(row_i["stoich"])
 
-    return(elem_list, compos, stoich_formula, elem_list_ordered)
+    return(stoich_formula)
