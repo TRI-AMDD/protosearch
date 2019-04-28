@@ -96,6 +96,14 @@ class OqmdInterface:
             data_list.append(data_dict_out)
         df = pd.DataFrame(data_list)
 
+        def choose_structure_from_group_of_identical_prototypes():
+            """
+            Filler method, can put more logic behind picking specific structure
+            from a group of strucutres of the same prototype
+            """
+            tmp = 42
+
+
         data_list = []
         groups = df.groupby("protoname")
         for protoname_i, group_i in tqdm(groups):
