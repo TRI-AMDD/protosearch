@@ -1,4 +1,4 @@
-from .workflow import Workflow, MLinterf
+from .workflow import Workflow, MLinterface
 
 
 class Acqusition(Workflow, MLInterface):
