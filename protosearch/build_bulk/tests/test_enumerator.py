@@ -21,7 +21,8 @@ class EnumerationTest(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
     def test_enumeration(self):
-        enumeration = Enumeration("Fe2O3", num_start=1, num_end=20)
+        E = Enumeration("2_3", num_start=1, num_end=6, SG_start=4, SG_end=5)
+        E.store_enumeration('2_3.db')
 
     def test_classification(self):
         path = sys.path[0]
