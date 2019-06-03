@@ -10,6 +10,7 @@ from ase.db import connect
 from protosearch.build_bulk.oqmd_interface import OqmdInterface
 from protosearch.build_bulk.classification import get_classification
 from protosearch.build_bulk.cell_parameters import CellParameters
+from protosearch.build_bulk.enumeration import OqmdEnumeration
 
 
 class BuildBulkTest(unittest.TestCase):
@@ -21,6 +22,14 @@ class BuildBulkTest(unittest.TestCase):
     def tearDown(self):
         os.chdir(self.pwd)
         shutil.rmtree(self.tempdir)
+
+    def test_oqmd_enumeration(self):
+        E = OqmdEnumeration()
+        formulas = E.get_formulas(elements={'A': ['Fe', 'Ag', 'Ru'],
+                                            'B': ['O', 'N'],
+                                            'C': ['C', 'B']},
+                                  max_atoms=6)
+        assert len(formulas) == 72
 
     def test_unique_prototypes(self):
         path = sys.path[0]
@@ -38,8 +47,7 @@ class BuildBulkTest(unittest.TestCase):
         atoms_list = O.create_proto_data_set(source='icsd',
                                              chemical_formula='FeO6',
                                              repetition=1)
-        # This test currently fails. There is 6 Fe instead of 6 O.
-        # Need to fix atom substitution part.
+
         for atoms in atoms_list["atoms"][:5]:
             assert atoms.get_number_of_atoms() == 7
             assert atoms.get_chemical_symbols().count('Fe') == 1
