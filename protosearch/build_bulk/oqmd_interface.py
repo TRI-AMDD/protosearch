@@ -1,5 +1,6 @@
 __authors__ = "Raul A. Flores; Kirsten Winther; Meng Zhao"
 
+from protosearch.build_bulk.cell_parameters import CellParameters
 from ast import literal_eval
 from ase.db import connect
 from tqdm import tqdm
@@ -10,7 +11,6 @@ import copy
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 
-from protosearch.build_bulk.cell_parameters import CellParameters
 
 class OqmdInterface:
     """Interace to OQMD data to create structurally unique atoms objects"""
@@ -34,7 +34,7 @@ class OqmdInterface:
         self.verbose = verbose
 
     def create_proto_data_set(self,
-                              chemical_formula=None,
+                              chemical_formula,
                               source=None,
                               repetition=None):
         """Create a dataset of unique prototype structures.
@@ -59,19 +59,16 @@ class OqmdInterface:
         # verbose = self.verbose
 
         # Argument Checker
-        if chemical_formula is not None:
-            mess_i = "Formula must be given as a string"
-            assert type(chemical_formula) == str, mess_i
-            stoich_formula = formula2elem(chemical_formula)
 
-            # elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
-            #     chemical_formula)
+        mess_i = "Formula must be given as a string"
+        assert type(chemical_formula) == str, mess_i
+        stoich_formula = formula2elem(chemical_formula)
 
-            formula = stoich_formula
-            # elements = elem_list_ordered
+        # elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
+        #     chemical_formula)
 
-        else:
-            raise ValueError("ERROR: Couldn't correctly parse input")
+        formula = stoich_formula
+        # elements = elem_list_ordered
 
         relev_id_list = self.__get_relevant_ids__(formula, source, repetition)
 
@@ -102,7 +99,6 @@ class OqmdInterface:
             from a group of strucutres of the same prototype
             """
             tmp = 42
-
 
         data_list = []
         groups = df.groupby("protoname")
@@ -229,7 +225,7 @@ class OqmdInterface:
             "a", "b", "c",
             "b/a", "c/a",
             # "alpha", "beta", "gamma",
-            ]
+        ]
 
         init_wyck_params = copy.copy(init_params)
         for param_i in non_wyck_params:
@@ -243,7 +239,7 @@ class OqmdInterface:
                 wyckoffs=prototype_wyckoffs_i,
                 species=new_elem_list,
                 verbose=False,
-                )
+            )
 
             parameters = CP.get_parameter_estimate(
                 master_parameters=init_wyck_params)
@@ -327,7 +323,7 @@ class OqmdInterface:
                     " the atoms into these species." + "\n",
                     " This should be implemented better in the future." + "\n",
                     "Raul A. Flores (190428)",
-                    )
+                )
 
         df_0 = pd.DataFrame(
             data={
@@ -349,7 +345,6 @@ class OqmdInterface:
             df_0["keys"].tolist()))
 
         return(elem_mapping_dict)
-
 
 
 def formula2elem(formula):
