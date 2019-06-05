@@ -78,14 +78,17 @@ class CellParameters:
         atoms = self.get_atoms(fix_parameters=cell_parameters)
 
         if self.coor_parameters:
-            if not np.all([c in master_parameters for c in self.coor_parameters]):
+            if not np.all([c in master_parameters
+                           for c in self.coor_parameters]):
                 coor_guess = self.get_wyckoff_coordinates()
                 cell_parameters.update(coor_guess)
+        # Angle optimization is too slow. Just use initial guess for now
+        """
         if self.angle_parameters:
             if not np.all([c in master_parameters for c in self.angle_parameters]):
                 angle_guess = self.get_angles(cell_parameters)
                 cell_parameters.update(angle_guess)
-
+        """
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
             if self.verbose:
                 print('Optimizing lattice constants')
@@ -235,26 +238,80 @@ class CellParameters:
             parameter_guess.update({'c/a': 1.4})
 
         if 'alpha' in self.parameters:
-            parameter_guess.update({'alpha': 85})
+            parameter_guess.update({'alpha': 84})
 
         if 'beta' in self.parameters:
-            parameter_guess.update({'beta': 85})
+            parameter_guess.update({'beta': 96})
 
         if 'gamma' in self.parameters:
-            parameter_guess.update({'gamma': 85})
+            parameter_guess.update({'gamma': 84})
 
         for i, p in enumerate(self.coor_parameters):
             parameter_guess.update({p: rand(1)[0] * 0.9})
 
         self.parameter_guess = parameter_guess
-        atoms = self.get_atoms(parameter_guess)
+
+        atoms = self.get_atoms()
         natoms = atoms.get_number_of_atoms()
 
         parameter_guess.update({'a': mean_radii * 4 * natoms ** (1 / 3)})
 
         return parameter_guess
 
-    def get_wyckoff_coordinates(self, view_images=False):
+    def get_wyckoff_coordinates(self, view_images=True):
+        atoms = self.get_atoms()
+        relative_positions = np.dot(atoms.cell, atoms.positions.T).T / \
+            np.linalg.norm(atoms.cell, axis=1) ** 2
+
+        high_sym_idx = []
+
+        taken_positions = []
+        for i, p in enumerate(relative_positions):
+            high_sym = []
+            for px in p:
+                high_sym += np.any([np.isclose(px, value) for
+                                    value in [0, 1/3, 0.5, 2/3, 1]])
+
+            if np.all(high_sym):
+                taken_positions += [p]
+
+        dir_map = {'x': 0,
+                   'y': 1,
+                   'z': 2}
+        natoms = atoms.get_number_of_atoms()
+
+        w_free_param = {}
+        parameters_axis = {'x': [], 'y': [], 'z': []}
+        for w in set(self.wyckoffs):
+            w_free_param.update({w: []})
+            for i in range(0, 100):
+                for c in [c for c in self.coor_parameters
+                          if w + str(i) == c[1:]]:
+                    direction = c.replace(w + str(i), '')
+                    w_free_param[w] += [dir_map[direction]]
+                    parameters_axis[direction] += [c]
+
+        for direction, parameters in parameters_axis.items():
+            n_points = len(parameters)
+            if 0 in taken_positions[:][dir_map[direction]]:
+                variables = np.linspace(0, 1, n_points + 2)[1: -1]
+            else:
+                variables = np.linspace(0, 1, n_points + 1)[: -1]
+            variables = [v + 0.03 if v in [0, 0.5, 1/3, 2/3]
+                         else v for v in variables]
+            variables_shuffle = []
+            n_splits = dir_map[direction] + 1 + len(variables) // 10
+            for cut in range(n_splits):
+                idx = list(range(cut, len(variables),
+                                 n_splits))
+                variables_shuffle += list(np.array(variables)[idx])
+
+            for i, v in enumerate(variables_shuffle):
+                self.parameter_guess.update({parameters[i]: v})
+
+        return self.parameter_guess
+
+    def get_wyckoff_coordinates_old(self, view_images=False):
         """
         Get an estimate for free wyckoff coordinates. The positions are
         optimized from the interatomic distances, d, by mininizing
@@ -331,28 +388,36 @@ class CellParameters:
 
         """
         fix_parameters.update(self.fixed_angles)
-        atoms = self.get_atoms(fix_parameters)
+
+        temp_parameters = fix_parameters.copy()
+        temp_parameters = self.get_lattice_constants(
+            temp_parameters)
+
+        atoms = self.get_atoms(temp_parameters)
+        ase.visualize.view(atoms)
         step_size = 1
-        Volume0 = 10000
-        volume0 = Volume0
-        volume = 1
+        Volume0 = atoms.get_volume()
+        volume0 = atoms.get_volume()
         direction = -1
         diff = 1
         j = 1
         Diff = 1
-        while Diff > 0.01:  # Outer convergence criteria
+        while abs(Diff) > 0.05:  # Outer convergence criteria
             if self.verbose:
                 print('Angle iteration {}'.format(j))
 
             for angle in self.angle_parameters:
                 direction = -1
+                direction_turns = 0
                 step_size = 1
                 angle0 = self.parameter_guess[angle]
                 diff = 1
+                gradient = 1
                 i = 0
-                while diff > 0.05:  # and i < 5: #for i in range(5):
+                while abs(diff) >= 0.05 and direction_turns < 2:
                     i += 1
-                    angletest = angle0 + direction * 20 / j * step_size
+                    delta_angle = step_size * gradient
+                    angletest = angle0 + step_size * gradient
                     temp_parameters = fix_parameters.copy()
                     temp_parameters.update({angle: angletest})
                     temp_parameters = self.get_lattice_constants(
@@ -364,19 +429,22 @@ class CellParameters:
 
                     cell = cellpar_to_cell(cell_params)
                     atoms.set_cell(cell, scale_atoms=True)
+                    ase.visualize.view(atoms)
 
                     volume = atoms.get_volume()
-                    diff = abs(volume0 - volume) / volume0
-                    if volume < volume0:
+                    gradient = (volume - volume0) / delta_angle
+                    diff = (volume - volume0) / volume0
+
+                    if diff < 0:
                         angle0 = angletest
                         self.parameter_guess.update({angle: angle0})
                         fix_parameters.update({angle: angle0})
                         volume0 = volume
                     else:
+                        direction_turns += 1
                         direction *= -1
 
                     step_size *= 0.5
-
             Diff = abs(volume0 - Volume0) / Volume0
             Volume0 = volume0
             j += 1
