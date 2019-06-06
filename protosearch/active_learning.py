@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration
 from protosearch.workflow.prototype_db import PrototypeSQL
@@ -48,13 +49,17 @@ class ActiveLearningLoop:
             # submit structures with WorkFLow
             WF = Workflow(db_filename='testloop.db')
 
-            # WF.submit_atoms_batch(self.batch_atoms)
+            WF.submit_atoms_batch(self.batch_atoms)
 
             # Wait a while - time.sleep?
             # get completed calculations from WorkFlow
             completed_ids = []
-            # while len(completed_ids) < max(1, self.batch_size // 2):
-            completed_ids = WF.check_submissions()
+            t0 = time.time()
+            while len(completed_ids) < max(1, self.batch_size // 2):
+                completed_ids = WF.check_submissions()
+                t = time.time() - t0
+                print('{} jobs completed in {} sec'.format(len(completed_ids), t))
+                time.sleep(10)
 
             # get formation energy of completed jobs and save to db
             self.save_formation_energies(completed_ids)
