@@ -187,18 +187,24 @@ class Workflow(PrototypeSQL):
                         'running': 0,
                         'errored': 0}
         completed_ids = []
+        failed_ids = []
+        running_ids = []
         for d in self.ase_db.select(submitted=1, completed=0):
             path = d.path + '/simulation'
             calcid = d.id
             status = self.check_job_status(path, calcid)
             status_count[status] += 1
             if status == 'completed':
-                completed_ids += d.id
+                completed_ids += [calcid]
+            elif status == 'errored':
+                failed_ids += [calcid]
+            elif status == 'errored':
+                running_ids += [calcid]
 
         print('Status for calculations:')
         for status, value in status_count.items():
             print('  {} {}'.format(value, status))
-        return completed_ids
+        return completed_ids, failed_ids, running_ids
 
     def check_job_status(self, path, calcid):
         status = 'running'
