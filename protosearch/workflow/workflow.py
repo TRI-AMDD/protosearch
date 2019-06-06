@@ -20,11 +20,13 @@ class Workflow(PrototypeSQL):
 
     def __init__(self,
                  calculator='vasp',
+                 db_filename=None,
                  basepath_ext=None):
 
         self.basepath = get_basepath(calculator=calculator,
                                      ext=basepath_ext)
-        db_filename = self.basepath + '/prototypes.db'
+        if not db_filename:
+            db_filename = self.basepath + '/prototypes.db'
 
         super().__init__(filename=db_filename)
         self._connect()
@@ -39,11 +41,14 @@ class Workflow(PrototypeSQL):
     def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None):
         """Submit a batch of calculations. Takes a list of atoms
         objects as input"""
+        batch_no = self.get_next_batch_no()
+        print('Batch no {}'.format(batch_no))
         for atoms in atoms_list:
-            self.submit_atoms(atoms, ncpus, calc_parameters)
+            self.submit_atoms(atoms, ncpus, batch_no, calc_parameters)
 
-    def submit_atoms(self, atoms, ncpus=1, calc_parameters=None):
+    def submit_atoms(self, atoms, ncpus=1, batch_no=None, calc_parameters=None):
         """Submit a calculation for an atoms object"""
+        print('SUBMIT!')
         prototype, parameters = get_classification(atoms)
 
         Sub = TriSubmit(atoms=atoms,
@@ -53,15 +58,24 @@ class Workflow(PrototypeSQL):
 
         Sub.submit_calculation()
 
-        key_value_pairs = {'p_name': prototype['prototype_name'],
+        key_value_pairs = {'p_name': prototype['p_name'],
                            'path': Sub.excpath,
                            'spacegroup': prototype['spacegroup'],
                            'wyckoffs': json.dumps(prototype['wyckoffs']),
                            'species': json.dumps(prototype['species'])}
+        if batch_no:
+            key_value_pairs.update({'batch':  batch_no})
 
         self.write_submission(key_value_pairs)
 
-    def submit(self, prototype, ncpus=1, calc_parameters=None):
+    def submit_batch(self, prototypes, ncpus=1, calc_parameters=None):
+        """Submit a batch of calculations. Takes a list of prototype
+        dicts as input"""
+        batch_no = self.get_next_batch_no()
+        for prototype in prototypes:
+            self.submit(prototype, ncpus, batch_no, calc_parameters)
+
+    def submit(self, prototype, ncpus=1, batch_no=None, calc_parameters=None):
         """Submit a calculation for a prototype, generating atoms
         with build_bulk and enumerator"""
         cell_parameters = prototype.get('parameters', None)
@@ -93,6 +107,9 @@ class Workflow(PrototypeSQL):
                            'wyckoffs': json.dumps(BB.wyckoffs),
                            'species': json.dumps(BB.species)}
 
+        if batch_no:
+            key_value_pairs.update({'batch':  batch_no})
+
         self.write_submission(key_value_pairs)
 
     def submit_enumerated(self, map_species, selection={}):
@@ -110,6 +127,41 @@ class Workflow(PrototypeSQL):
 
         for prototype in prototypes:
             self.submit(prototype)
+
+    def submit_id_batch(self, calc_ids, ncpus=1, calc_parameters=None):
+        """Submit a batch of calculations. Takes a list of atoms
+        objects as input"""
+        batch_no = self.get_next_batch_no()
+        for calc_id in calc_ids:
+            self.submit_id(calc_id, ncpus, batch_no, calc_parameters)
+
+    def submit_id(self, calc_id,  ncpus=1, batch_no=None, calc_parameters=None):
+        """
+        Submit an atomic structure by id
+        """
+
+        row = self.ase_db.get(id=calc_id)
+        atoms = row.toatoms()
+
+        formula = row.formula
+        p_name = row.p_name
+
+        if self.is_calculated(formula=formula,
+                              p_name=p_name):
+            return
+
+        Sub = TriSubmit(atoms=atoms,
+                        ncpus=ncpus,
+                        calc_parameters=calc_parameters,
+                        basepath=self.basepath)
+
+        key_value_pairs = {'path': Sub.excpath,
+                           'submitted': 1}
+
+        if batch_no:
+            key_value_pairs.update({'batch':  batch_no})
+
+        self.ase_db.update(calc_id, key_value_pairs)
 
     def write_submission(self, key_value_pairs):
         """Track submitted job in database"""
@@ -134,19 +186,22 @@ class Workflow(PrototypeSQL):
         status_count = {'completed': 0,
                         'running': 0,
                         'errored': 0}
-
-        for d in self.ase_db.select(completed=0):
+        completed_ids = []
+        for d in self.ase_db.select(submitted=1, completed=0):
             path = d.path + '/simulation'
             calcid = d.id
             status = self.check_job_status(path, calcid)
             status_count[status] += 1
+            if status == 'completed':
+                completed_ids += d.id
 
         print('Status for calculations:')
         for status, value in status_count.items():
             print('  {} {}'.format(value, status))
-        return
+        return completed_ids
 
     def check_job_status(self, path, calcid):
+        status = 'running'
         for root, dirs, files in os.walk(path):
             if 'monitor.sh' in files and not 'finalized' in files:
                 status = 'running'
@@ -250,6 +305,9 @@ class Workflow(PrototypeSQL):
 
             # Treat as completed, now it's resubmitted
             self.ase_db.update(id=d.id, completed=1)
+
+    def get_completed_batch(self):
+        ids = self.check_submissions()
 
 
 def clean_key_value_pairs(key_value_pairs):
