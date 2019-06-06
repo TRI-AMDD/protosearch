@@ -201,7 +201,13 @@ class CellParameters:
 
         b2.set_structure_from_file(poscar.getvalue())
         sg2 = b2.get_spacegroup()
+        s2 = b2.get_species()
         w2 = b2.get_wyckoff()
+
+        wyckoff_species = sorted([self.wyckoffs[i] + self.species[i]
+                                  for i in range(len(self.species))])
+
+        wyckoff_species2 = sorted([w2[i] + s2[i] for i in range(len(s2))])
 
         b2.delete()
         if not sg2 == self.spacegroup:
@@ -209,7 +215,7 @@ class CellParameters:
                 print('Symmetry reduced to {} from {}'.format(
                     sg2, self.spacegroup))
             return False
-        if not w2 == self.wyckoffs:
+        if not wyckoff_species2 == wyckoff_species2:
             if self.verbose:
                 print('Wyckoffs reduced to {} from {}'.format(
                     w2, self.wyckoffs))
@@ -259,19 +265,18 @@ class CellParameters:
         return parameter_guess
 
     def get_wyckoff_coordinates(self, view_images=True):
+        # Determine high-symmetry positions taken in the unit cell.
         atoms = self.get_atoms()
         relative_positions = np.dot(atoms.cell, atoms.positions.T).T / \
             np.linalg.norm(atoms.cell, axis=1) ** 2
 
         high_sym_idx = []
-
         taken_positions = []
         for i, p in enumerate(relative_positions):
             high_sym = []
             for px in p:
                 high_sym += np.any([np.isclose(px, value) for
                                     value in [0, 1/3, 0.5, 2/3, 1]])
-
             if np.all(high_sym):
                 taken_positions += [p]
 
@@ -293,12 +298,17 @@ class CellParameters:
 
         for direction, parameters in parameters_axis.items():
             n_points = len(parameters)
-            if 0 in taken_positions[:][dir_map[direction]]:
+            high_sym_pos = taken_positions[:][dir_map[direction]]
+            if 0 in high_sym_pos:
+                # don't put wyckoff coordinates close to zero
                 variables = np.linspace(0, 1, n_points + 2)[1: -1]
             else:
                 variables = np.linspace(0, 1, n_points + 1)[: -1]
-            variables = [v + 0.03 if v in [0, 0.5, 1/3, 2/3]
-                         else v for v in variables]
+
+            # Shift away from high symmetry positions
+            if np.any([v in variables for v in [0, 1/2, 1/3, 2/3, 1]]):
+                variables = [v + 0.25/n_points for v in variables]
+
             variables_shuffle = []
             n_splits = dir_map[direction] + 1 + len(variables) // 10
             for cut in range(n_splits):
