@@ -216,7 +216,6 @@ class PrototypeSQL:
         cur.execute(
             "SELECT max(value) from number_key_values where key='batch'")
         cur_batch = cur.fetchall()
-        print(cur_batch)
         if cur_batch:
             if cur_batch[0][0]:
                 return cur_batch + 1
