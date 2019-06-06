@@ -59,7 +59,7 @@ class ActiveLearningLoop:
                 completed_ids = WF.check_submissions()
                 t = time.time() - t0
                 print('{} jobs completed in {} sec'.format(len(completed_ids), t))
-                time.sleep(10)
+                time.sleep(60)
 
             # get formation energy of completed jobs and save to db
             self.save_formation_energies(completed_ids)
