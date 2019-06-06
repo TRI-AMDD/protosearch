@@ -23,12 +23,20 @@ init_commands = [
     species text,
     wyckoffs text);""",
 
-    """CREATE TABLE jobs (
+    """CREATE TABLE fingerprint (
     id integer,
-    parameters text,
-    completed bool,
-    FOREIGN KEY (id) REFERENCES prototype(id))
+    input text,
+    output text,
+    FOREIGN KEY (id) REFERENCES systems(id));
+    """,
+
+    """CREATE TABLE prediction (
+    id integer,
+    Ef real,
+    var real,
+    FOREIGN KEY (id) REFERENCES systems(id));
     """
+
 ]
 
 columns = ['id', 'name', 'natom', 'spacegroup', 'npermutations', 'permutations',
@@ -48,7 +56,7 @@ class PrototypeSQL:
                 '.db'), 'filename should have .db extension'
         else:
             basepath = get_basepath()
-            filename = '/prototypes.db'
+            filename = basepath + '/prototypes.db'
         self.filename = filename
         self.initialized = False
         self.default = 'NULL'
@@ -96,7 +104,6 @@ class PrototypeSQL:
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
-
         species = []
 
         permutations = entry['specie_permutations']
@@ -120,6 +127,31 @@ class PrototypeSQL:
 
         return
 
+    def select_atoms(self, **kwargs):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        atoms_list = []
+        for row in self.ase_db.select(**kwargs):
+            atoms_list += row.toatoms()
+
+        return atoms_list
+
+    def get_atom_by_id(self, id):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        row = self.ase_db.get(id=id)
+        return row.toatoms()
+
+    def get_atoms_list(self, ids):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        atoms_list = []
+        for id in ids:
+            atoms_list += [self.ase_db.get(id=int(id)).toatoms()]
+        return atoms_list
+
     def select(self, **kwargs):
         con = self.connection or self._connect()
         self._initialize(con)
@@ -128,8 +160,10 @@ class PrototypeSQL:
         query = ''
         for key, value in kwargs.items():
             query += ' {}={}'.format(key, value)
-
-        cur.execute('SELECT * from prototype where {}'.format(query))
+        statement = 'SELECT * from prototype'
+        if query:
+            statement += 'where {}'.format(query)
+        cur.execute(statement)
         data = cur.fetchall()
 
         result = []
@@ -160,7 +194,7 @@ class PrototypeSQL:
         self._initialize(con)
         cur = con.cursor()
         cur.execute(
-            'SELECT spacegroup,wyckoffs,s from prototype where name={};'.format(p_name))
+            'SELECT spacegroup,wyckoffs,from prototype where name={};'.format(p_name))
         name = cur.fetchall()[0]
 
         return name
@@ -174,3 +208,53 @@ class PrototypeSQL:
             return True
         else:
             return False
+
+    def get_next_batch_no(self):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        cur.execute(
+            "SELECT max(value) from number_key_values where key='batch'")
+        cur_batch = cur.fetchall()
+        print(cur_batch)
+        if cur_batch:
+            if cur_batch[0][0]:
+                return cur_batch + 1
+            else:
+                return 0
+        else:
+            return 0
+
+    def save_fingerprint(self, id, input_data, output_data=None):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        input_data = json.dumps(input_data)
+        columns = 'id, input'
+        values = "{}, '{}'".format(id, input_data)
+        if output_data:
+            output_data = json.dumps(output_data)
+            columns += ', output'
+            values += ", '{}'".format(output_data)
+
+        cur.execute('INSERT INTO fingerprint ({}) VALUES ({})'
+                    .format(columns, values))
+
+        con.commit()
+        con.close()
+
+    def save_predictions(self, ids, Efs, var):
+        # Just save formation energy and uncertainty for now
+        # link to structure id
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        for i, id in enumerate(ids):
+
+            cur.execute('INSERT INTO prediction VALUES ({}, {}, {})'.format(
+                id, Efs[i], var[i]))
+
+        con.commit()
+        con.close()
+
+   # def read_predictions(self, ids, EFs, var):
