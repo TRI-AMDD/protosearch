@@ -53,13 +53,17 @@ class ActiveLearningLoop:
 
             # Wait a while - time.sleep?
             # get completed calculations from WorkFlow
-            completed_ids = []
+            running_ids = []
             t0 = time.time()
-            while len(completed_ids) < max(1, self.batch_size // 2):
-                completed_ids = WF.check_submissions()
+            while len(running_ids) < \
+                  max(1, self.batch_size // 2):
+                completed_ids, failed_ids, running_ids = WF.check_submissions()
                 t = time.time() - t0
                 print('{} jobs completed in {} sec'.format(len(completed_ids), t))
                 time.sleep(60)
+
+            # Make sure the number or running jobs doesn't blow up
+            self.corrected_batch_size = self.batch_size - len(running_ids)
 
             # get formation energy of completed jobs and save to db
             self.save_formation_energies(completed_ids)
@@ -179,7 +183,8 @@ class ActiveLearningLoop:
         values = self.energies - kappa * self.uncertainties
 
         indices = np.argsort(values)
-        batch_ids = list(np.array(self.test_ids)[indices])[:self.batch_size]
+        batch_ids = list(np.array(self.test_ids)[indices])\
+            [:self.corrected_batch_size]
 
         self.batch_atoms = self.DB.get_atoms_list(batch_ids)
 
