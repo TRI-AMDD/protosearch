@@ -179,8 +179,8 @@ class ActiveLearningLoop:
         values = self.energies - kappa * self.uncertainties
 
         indices = np.argsort(values)
-        batch_ids = list(np.array(self.test_ids)[indices])
-        print(batch_ids)
+        batch_ids = list(np.array(self.test_ids)[indices])[:self.batch_size]
+
         self.batch_atoms = self.DB.get_atoms_list(batch_ids)
 
 
