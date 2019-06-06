@@ -1,7 +1,9 @@
 import string
+import json
 import numpy as np
 import bulk_enumerator as be
 
+from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.workflow.prototype_db import PrototypeSQL
 
 
@@ -103,27 +105,96 @@ metals = [
 ]
 
 
-class OqmdEnumeration():
+class AtomsEnumeration():
     """
-    Enumerator class to obtain all possible formulas for a
-    supplied set of elements.
+    Enumeratate atomic structures based on prototype and elements
+
+    elements: dict
+        {'A': 'metals', 'B': ['O', 'F'], 'C': 'all'}
     """
 
-    def __init__(self):
-        pass
+    def __init__(self,
+                 elements):
+        self.elements = elements
+
+        for key, value in self.elements.items():
+            self.elements[key] = map_elements(value)
+
+    def store_atom_enumeration(self, filename=None):
+        DB = PrototypeSQL(filename=filename)
+
+        prototypes = DB.select()
+
+        for prototype in prototypes:
+            species_lists = self.get_species_lists(prototype['species'])
+            cell_parameters = prototype.get('cell_parameters', None)
+            if cell_parameters:
+                cell_parameters = json.load(cell_parameters)
+
+            for species in species_lists:
+                BB = BuildBulk(prototype['spacegroup'],
+                               prototype['wyckoffs'],
+                               species,
+                               cell_parameters=cell_parameters
+                               )
+                BB.get_poscar()
+                atoms = BB.get_atoms_from_poscar()
+                key_value_pairs = {'p_name': prototype['name'],
+                                   'spacegroup': prototype['spacegroup'],
+                                   'wyckoffs':
+                                   json.dumps(prototype['wyckoffs']),
+                                   'species': json.dumps(species),
+                                   'relaxed': 0,
+                                   'completed': 0,
+                                   'submitted': 0}
+
+                if atoms:
+                    DB.ase_db.write(atoms, key_value_pairs)
+
+    def get_species_lists(self, gen_species):
+        elements = self.elements
+
+        alph = list(string.ascii_uppercase)
+
+        name_map = {'A': 'A0',
+                    'B': 'A1',
+                    'C': 'A2',
+                    'D': 'A3',
+                    'E': 'A4'}
+
+        N_species = len(list(elements.keys()))
+
+        s_list = []
+        for element in self.elements['A']:
+            s_list += [[element if g == 'A0' else g for g in gen_species]]
+
+        s_dict = {'0': s_list}
+
+        dim = 1
+        while dim < N_species:
+            s_dict.update({str(dim): []})
+            for s_list in s_dict[str(dim - 1)]:
+                for element in self.elements[alph[dim]]:
+                    s_dict[str(dim)] += [[element if g ==
+                                          name_map[alph[dim]]
+                                          else g for g in s_list]]
+            dim += 1
+
+        species_list = s_dict[str(dim-1)]
+        return species_list
 
     def get_formulas(self,
-                     elements,
                      stoichiometries=None,
                      max_atoms=12):
         """
-        elements: dict
-            {'A': 'metals', 'B': ['O', 'F'], 'C': 'all'}
-        stoichiometry:  str or None
-            f.ex. '1_2', '1_3' or '1_2_2'
+        obtain all possible formulas for a
+        supplied set of elements.
+
+        stoichiometries:  list or None
+            f.ex. ['1_2', '1_3', '1_2_2']
         max_atoms: int
         """
-
+        elements = self.elements
         if not stoichiometries:
             """Get all possible combinations where N_A <= N_B etc. and
             sum(N) <= max_atoms"""
@@ -134,7 +205,7 @@ class OqmdEnumeration():
             dim = 1
             while dim < N_species:
                 s_dict.update({str(dim): []})
-                for s_list in enum_dict[str(dim - 1)]:
+                for s_list in s_dict[str(dim - 1)]:
                     n_atoms = sum(s_list)
                     i = s_list[-1]
                     for j in [j for j in range(1, max_atoms) if j >= i]:
@@ -155,7 +226,7 @@ class OqmdEnumeration():
                 len(stoichiometry.split('_'))
             formulas = np.array([])
             for i, value in enumerate(stoichiometry.split('_')):
-                element_list = map_elements(elements[alph[i]])
+                element_list = elements[alph[i]]
                 if value == '1':
                     value = ''
                 element_list = np.char.array([e + value for e in element_list])
