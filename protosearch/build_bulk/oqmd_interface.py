@@ -1,5 +1,6 @@
 __authors__ = "Raul A. Flores; Kirsten Winther; Meng Zhao"
 
+from protosearch.build_bulk.classification import get_classification
 from protosearch.build_bulk.cell_parameters import CellParameters
 from ast import literal_eval
 from ase.db import connect
@@ -291,6 +292,34 @@ class OqmdInterface:
         prototypes = [p[0] for p in prototypes]
 
         return prototypes
+
+    def get_parameters_for_prototype(self, proto_name, formula=None):
+        """
+        Get parameters, i.e. lattice constants and Wyckoff coordinates
+        from OQMD entries
+        If the same formula is available, that structure will be chosen.
+        Otherwise, any material with that prototype will be chosen.
+        Note that, in this case, a new guess for the lattice constants
+        should be made.
+        """
+        db = connect(self.dbfile)
+
+        parameter_dict = None
+        same_formula = False
+
+        if formula:
+            for row in db.select(formula=formula, proto_name=protoname, limit=1):
+                atoms = row.toatoms()
+                formula = row.formula
+                prototype, parameter_dict = get_classification(atoms)
+
+        if not parameter_dict:
+            for row in db.select(proto_name=protoname, limit=1):
+                atoms = row.toatoms()
+                formula = row.formula
+                prototype, parameter_dict = get_classification(atoms)
+
+        return formula, parameter_dict
 
     def get_elem_mapping(self, formula0, formula1):
         """
