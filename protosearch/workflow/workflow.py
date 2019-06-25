@@ -15,7 +15,7 @@ from .prototype_db import PrototypeSQL
 
 class Workflow(PrototypeSQL):
     """Submits calculations with TriSubmit, and tracks the calculations
-    in an ASE db. 
+    in an ASE db.
     """
 
     def __init__(self,
@@ -122,7 +122,7 @@ class Workflow(PrototypeSQL):
         Parameters:
         ----------
         map_species: dict
-          map A0, A1, etc to species. F.ex: {'A0': 'Fe', 'A1': 'O'} 
+          map A0, A1, etc to species. F.ex: {'A0': 'Fe', 'A1': 'O'}
         selection: dict
           ase db selection. F.ex: {'spacegroup': 166, natom=3}
         """
@@ -205,6 +205,11 @@ class Workflow(PrototypeSQL):
                 failed_ids += [calcid]
             elif status == 'running':
                 running_ids += [calcid]
+
+        # Eliminate duplicates from id lists
+        completed_ids = list(set(completed_ids))
+        failed_ids = list(set(failed_ids))
+        running_ids = list(set(running_ids))
 
         print('Status for calculations:')
         for status, value in status_count.items():
