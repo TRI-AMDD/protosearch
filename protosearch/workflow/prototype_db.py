@@ -35,8 +35,33 @@ init_commands = [
     Ef real,
     var real,
     FOREIGN KEY (id) REFERENCES systems(id));
-    """
+    """,
 
+    """CREATE TABLE enumeration (
+    stoichiometry text,
+    spacegroup int,
+    number int,
+    num_type text
+    );""",
+
+    """CREATE TABLE batch_status (
+    batch_no INTEGER PRIMARY KEY AUTOINCREMENT,
+    structure_ids text,
+    completed_ids text
+    );""",
+
+    """CREATE TABLE status (
+    id integer,
+    chemical_formulas text,
+    batch_size int,
+    enumerated int,
+    fingerprinted int,
+    initialized int,
+    last_batch_no int,
+    n_completed int,
+    n_errored int,
+    most_stable_id int
+    );"""
 ]
 
 columns = ['id', 'name', 'natom', 'spacegroup', 'npermutations', 'permutations',
@@ -91,14 +116,79 @@ class PrototypeSQL:
         SQLite3Database()._initialize(con)  # ASE db initialization
 
         cur = con.execute(
-            'SELECT COUNT(*) FROM sqlite_master WHERE name="prototype"')
+            'SELECT COUNT(*) FROM sqlite_master WHERE name="status"')
 
-        if cur.fetchone()[0] == 0:  # no reaction table
+        if cur.fetchone()[0] == 0:  # no prototype table
             for init_command in init_commands:
                 con.execute(init_command)  # Create tables
             con.commit()
 
         self.initialized = True
+
+    def get_status(self):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        cur.execute('SELECT * from status;')
+
+        status = cur.fetchall()[0]
+        status_dict = {
+            'chemical_formulas': status[0],
+            'batch_size': status[1],
+            'enumerated': status[2],
+            'fingerprinted': status[3],
+            'initialized': status[4],
+            'last_batch_no': status[5],
+            'n_completed': status[6],
+            'n_errored': status[7],
+            'most_stable_id': status[8]}
+        return status_dict
+
+    def write_status(self, **args):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        query = "INSERT into status (id) VALUES (0)"
+        cur.execute(query)
+
+        for key, value in args.items():
+            query = "UPDATE status SET {}=".format(key)
+
+            if isinstance(value, str):
+                query += "'{}'".format(value)
+
+            if isinstance(value, list):
+                query += "'{}'".format(json.dumps(value))
+
+            else:
+                query += "{}".format(value)
+            query += ' where id=0'
+            cur.execute(query)
+
+        if not self.connection:
+            con.commit()
+            con.close()
+        return
+
+    def write_job_status(self):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        cur.execute(
+            "SELECT count(id) from number_key_values where key='relaxed' and value=1")
+        n_completed = cur.fetchall()[0][0]
+        cur.execute(
+            "SELECT count(id) from number_key_values where key='completed' and value=-1")
+        n_errored = cur.fetchall()[0][0]
+
+        self.write_status(n_completed=n_completed, n_errored=n_errored)
+
+        if not self.connection:
+            con.commit()
+            con.close()
+        return
 
     def write_prototype(self, entry):
         con = self.connection or self._connect()
@@ -121,6 +211,54 @@ class PrototypeSQL:
         q = self.default + ',' + ', '.join('?' * len(values))
         cur.execute('INSERT or IGNORE INTO prototype VALUES ({})'.format(q),
                     values)
+        if not self.connection:
+            con.commit()
+            con.close()
+
+        return
+
+    def write_batch_status(self, batch_no, structure_ids):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        structure_ids = json.dumps(structure_ids)
+
+        cur.execute("INSERT into batch_status (batch_no, structure_ids) VALUES ({}, '{}')".
+                    format(batch_no, structure_ids))
+
+        if not self.connection:
+            con.commit()
+            con.close()
+
+        return
+
+    def write_enumerated(self, stoichiometry, spacegroup, number, num_type):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        cur.execute(
+            """INSERT into enumeration (stoichiometry, spacegroup, number, num_type) 
+            VALUES ('{}', {}, {}, '{}')""".
+            format(stoichiometry, spacegroup, number, num_type)
+        )
+
+        if not self.connection:
+            con.commit()
+            con.close()
+        return
+
+    def update_status_complete(self, batch_no, structure_ids):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        structure_ids = json.dumps(structure_ids)
+
+        cur.execute("UPDATE status SET batch_no={}, structure_ids='{}' where id = 0".
+                    format(batch_no, structure_ids))
+
         if not self.connection:
             con.commit()
             con.close()
@@ -224,11 +362,23 @@ class PrototypeSQL:
         else:
             return 0
 
+    def get_structure_ids(self, start_id=1, n_ids=None):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        query = "SELECT id from systems where id>{}".format(start_id-1)
+        if n_ids:
+            query += ' limit {}'.format(n_ids)
+        cur.execute(query)
+        ids = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
+
     def save_fingerprint(self, id, input_data, output_data=None):
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
-        input_data = json.dumps(input_data)
+        input_data = json.dumps(input_data.tolist())
         columns = 'id, input'
         values = "{}, '{}'".format(id, input_data)
         if output_data:
@@ -256,4 +406,4 @@ class PrototypeSQL:
         con.commit()
         con.close()
 
-   # def read_predictions(self, ids, EFs, var):
+    # def read_predictions(self, ids, EFs, var):
