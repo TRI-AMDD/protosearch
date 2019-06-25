@@ -334,8 +334,31 @@ class OqmdInterface:
           Secondary chemical formula, species will be transformed into the
           corresponding element of formula0
         """
-        Comp0 = Composition(formula0).to_data_dict["reduced_cell_composition"]
-        Comp1 = Composition(formula1).to_data_dict["reduced_cell_composition"]
+        special_formulas = {
+            "Li2O2": {"Li": 1, "O": 1},
+            "Na2O2": {"Na": 1, "O": 1},
+            "K2O2": {"K": 1, "O": 1},
+            "H2O2": {"H": 1, "O": 1},
+            "Cs2O2": {"Cs": 1, "O": 1},
+            "Rb2O2": {"Rb": 1, "O": 1},
+            "O2": {"O": 1},
+            "N2": {"N": 1},
+            "F2": {"F": 1},
+            "Cl2": {"Cl": 1},
+            "H2": {"H": 1},
+            }
+
+        comp0 = Composition(formula0)
+        comp1 = Composition(formula1)
+
+        if comp0.reduced_formula in special_formulas:
+            Comp0 = special_formulas[comp0.reduced_formula]
+        else:
+            Comp0 = comp0.to_data_dict["reduced_cell_composition"]
+        if comp1.reduced_formula in special_formulas:
+            Comp1 = special_formulas[comp1.reduced_formula]
+        else:
+            Comp1 = comp1.to_data_dict["reduced_cell_composition"]
 
         mess_i = "Not the same number of element types in both species"
         assert len(Comp0) == len(Comp1), mess_i
