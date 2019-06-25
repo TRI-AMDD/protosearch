@@ -10,7 +10,7 @@ class ActiveLearningLoop:
 
     def __init__(self,
                  chemical_formulas,
-                 source='oqmd_icsd',
+                 source='prototypes',
                  batch_size=1):
         """
         Class to run the active learning loop
@@ -31,43 +31,50 @@ class ActiveLearningLoop:
         self.chemical_formulas = chemical_formulas
         self.source = source
         self.batch_size = batch_size
-        self.db_filename = 'testloop.db'
+        self.db_filename = 'testAB2.db'
         self.DB = PrototypeSQL(self.db_filename)
+        self.DB.write_status(
+            chemical_formulas=chemical_formulas, batch_size=batch_size)
 
     def run(self):
-        """Run loop"""
-        # Initialize:
-        # enumerate structures with Build bulk
-        # generate fingerprints and save to db
-        # aqcusition -> select random batch
-        self.initialize()
+        """Run actice learning loop"""
 
-        # LOOP:
+        WF = Workflow(db_filename=self.db_filename)
+        self.status = self.DB.get_status()
+
+        if not self.status['initialized']:
+            self.batch_no = 1
+            self.initialize()
+            self.DB.write_status(initialized=1)
+            WF.submit_id_batch(self.batch_ids)
+            self.DB.write_status(last_batch_no=self.batch_no)
+
+        else:
+            self.batch_no = self.status['last_batch_no']
         happy = False
-        self.batch_no = 1
         while not happy:
-            # submit structures with WorkFLow
-            WF = Workflow(db_filename='testloop.db')
-
-            WF.submit_atoms_batch(self.batch_atoms)
-
             # Wait a while - time.sleep?
             # get completed calculations from WorkFlow
-            running_ids = []
+            completed_ids, failed_ids, running_ids = WF.check_submissions()
             t0 = time.time()
-            while len(running_ids) < \
-                  max(1, self.batch_size // 2):
-                completed_ids, failed_ids, running_ids = WF.check_submissions()
+            while len(running_ids) > self.batch_size // 2:
+                WF.recollect()
+                completed_ids0, failed_ids0, running_ids0 = WF.check_submissions()
+                completed_ids += completed_ids0
+                failed_ids += failed_ids0
+                running_ids += running_ids0
                 t = time.time() - t0
-                print('{} jobs completed in {} sec'.format(len(completed_ids), t))
+                print('{} job(s) completed in {:.2f} min'.format(len(completed_ids),
+                                                                 t / 60))
                 time.sleep(60)
+
+            self.DB.write_job_status()
 
             # Make sure the number or running jobs doesn't blow up
             self.corrected_batch_size = self.batch_size - len(running_ids)
 
             # get formation energy of completed jobs and save to db
             self.save_formation_energies(completed_ids)
-
             happy = self.evaluate()
 
             # save formation energies + regenerated fingerprints to db
@@ -80,18 +87,21 @@ class ActiveLearningLoop:
             self.acquire_batch()
 
             self.batch_no += 1
-
-    def restart(self):
-        """restart broken loop"""
-        pass
+            # submit structures with WorkFLow
+            WF.submit_id_batch(self.batch_ids)
+            self.DB.write_status(last_batch_no=self.batch_no)
 
     def initialize(self):
         self.enumerate_structures()
+        self.DB.write_status(enumerated=1)
+
         self.generate_fingerprints()
+        self.DB.write_status(fingerprinted=1)
         # Run standard states?
 
-        batch_ids = list(range(1, self.batch_size + 1))
-        self.batch_atoms = self.DB.get_atoms_list(batch_ids)
+        self.batch_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
+
+        #self.batch_atoms = self.DB.get_atoms_list(batch_ids)
 
     def evaluate(self):
         happy = False
@@ -99,7 +109,6 @@ class ActiveLearningLoop:
         return happy
 
     def enumerate_structures(self):
-
         # Map chemical formula to elements
         # stoichiometries, elements =\
         # get_stoich_from_formulas(self.chemical_formulas)
@@ -107,16 +116,19 @@ class ActiveLearningLoop:
         stoichiometries = ['1_2']
 
         elements = {'A': ['Ir'],
-                    'B': ['O']}
+                    'B': ['O']} 
 
-        for stoichiometry in stoichiometries:
-            E = Enumeration(stoichiometry, num_start=1, num_end=4,
-                            SG_start=76, SG_end=80)
-            E.store_enumeration(filename=self.db_filename)
+        if self.source == 'prototypes':
+            for stoichiometry in stoichiometries:
+                E = Enumeration(stoichiometry, num_start=3, num_end=3,
+                                SG_start=1, SG_end=230, num_type='atom')
+                E.store_enumeration(filename=self.db_filename)
 
-        AE = AtomsEnumeration(elements)
-        AE.store_atom_enumeration(filename=self.db_filename)
-
+            AE = AtomsEnumeration(elements)
+            AE.store_atom_enumeration(filename=self.db_filename)
+        else:
+            raise NotImplementedError, 'OQMD interface not implemented'
+        
     def generate_fingerprints(self, code='catlearn', ids=None):
         self.DB._connect()
         ase_db = self.DB.ase_db
@@ -183,10 +195,8 @@ class ActiveLearningLoop:
         values = self.energies - kappa * self.uncertainties
 
         indices = np.argsort(values)
-        batch_ids = list(np.array(self.test_ids)[indices])\
-            [:self.corrected_batch_size]
-
-        self.batch_atoms = self.DB.get_atoms_list(batch_ids)
+        self.batch_ids = list(np.array(self.test_ids)[indices])[
+            :self.corrected_batch_size]
 
 
 if __name__ == "__main__":
