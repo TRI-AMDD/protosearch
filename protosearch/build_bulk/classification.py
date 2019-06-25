@@ -22,6 +22,7 @@ def get_classification(atoms):
     wyckoffs = b.get_wyckoff()
     species = b.get_species()
     parameters = b.get_parameter_values()
+    b.delete()
 
     prototype = {'p_name': name,
                  'spacegroup': spacegroup,

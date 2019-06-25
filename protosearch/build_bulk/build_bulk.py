@@ -73,6 +73,7 @@ class BuildBulk(CellParameters):
         self.prototype_name = b.get_name()
 
         self.poscar = b.get_primitive_poscar()
+        b.delete()
 
         return self.poscar
 
@@ -97,5 +98,6 @@ class BuildBulk(CellParameters):
 
         b.set_parameter_values(self.cell_param_list, self.cell_value_list)
         self.prototype_name = b.get_name()
+        b.delete()
 
         return self.prototype_name
