@@ -66,11 +66,24 @@ class Enumeration():
 
     def store_enumeration(self, filename=None):
 
-        enumerations = self.get_enumeration()
+        E = be.enumerator.ENUMERATOR()
+        for SG in range(self.SG_start, self.SG_end + 1):
+            enumerations = E.get_bulk_enumerations(self.stoichiometry,
+                                                   self.num_start,
+                                                   self.num_end,
+                                                   SG,
+                                                   SG,
+                                                   self.num_type)
 
-        with PrototypeSQL(filename=filename) as DB:
-            for entry in enumerations:
-                DB.write_prototype(entry=entry)
+            print('Found {} prototypes for spacegroup={}'.format(
+                len(enumerations), SG))
+            with PrototypeSQL(filename=filename) as DB:
+                for entry in enumerations:
+                    DB.write_prototype(entry=entry)
+
+                for num in range(self.num_start, self.num_end + 1):
+                    DB.write_enumerated(self.stoichiometry, SG, num,
+                                        self.num_type)
 
 
 all_elements = [
