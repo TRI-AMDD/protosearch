@@ -38,6 +38,10 @@ class Workflow(PrototypeSQL):
         subprocess.call('trisync', cwd=self.basepath)
         self.collected = True
 
+    def recollect(self):
+        subprocess.call('trisync', cwd=self.basepath)
+        self.collected = True
+
     def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None):
         """Submit a batch of calculations. Takes a list of atoms
         objects as input"""
@@ -130,7 +134,7 @@ class Workflow(PrototypeSQL):
 
     def submit_id_batch(self, calc_ids, ncpus=1, calc_parameters=None):
         """Submit a batch of calculations. Takes a list of atoms
-        objects as input"""
+        objects db ids as input"""
         batch_no = self.get_next_batch_no()
         for calc_id in calc_ids:
             self.submit_id(calc_id, ncpus, batch_no, calc_parameters)
@@ -139,8 +143,7 @@ class Workflow(PrototypeSQL):
         """
         Submit an atomic structure by id
         """
-
-        row = self.ase_db.get(id=calc_id)
+        row = self.ase_db.get(id=int(calc_id))
         atoms = row.toatoms()
 
         formula = row.formula
@@ -155,13 +158,15 @@ class Workflow(PrototypeSQL):
                         calc_parameters=calc_parameters,
                         basepath=self.basepath)
 
+        Sub.submit_calculation()
+
         key_value_pairs = {'path': Sub.excpath,
                            'submitted': 1}
 
-        if batch_no:
+        if batch_no is not None:
             key_value_pairs.update({'batch':  batch_no})
 
-        self.ase_db.update(calc_id, key_value_pairs)
+        self.ase_db.update(int(calc_id), **key_value_pairs)
 
     def write_submission(self, key_value_pairs):
         """Track submitted job in database"""
@@ -198,7 +203,7 @@ class Workflow(PrototypeSQL):
                 completed_ids += [calcid]
             elif status == 'errored':
                 failed_ids += [calcid]
-            elif status == 'errored':
+            elif status == 'running':
                 running_ids += [calcid]
 
         print('Status for calculations:')
@@ -212,11 +217,6 @@ class Workflow(PrototypeSQL):
             if 'monitor.sh' in files and not 'finalized' in files:
                 status = 'running'
                 break
-            elif 'monitor.sh' in files and 'err' in files:
-                status = 'errored'
-                self.save_failed_calculation(root, calcid)
-                break
-
             elif 'monitor.sh' in files and 'completed' in files:
                 # Calculation completed - now save everything
                 try:  # Sometimes outcar is corrupted
@@ -224,12 +224,16 @@ class Workflow(PrototypeSQL):
                     status = 'completed'
                     self.save_completed_calculation(atoms,
                                                     path,
-                                                    runpath,
+                                                    root,
                                                     calcid)
                 except:
                     print("Couldn't read OUTCAR")
                     status = 'errored'
-                    self.save_failed_calculations(root, calcid)
+                    self.save_failed_calculation(root, calcid)
+                break
+            elif 'monitor.sh' in files and 'err' in files:
+                status = 'errored'
+                self.save_failed_calculation(root, calcid)
                 break
 
         return status
@@ -245,7 +249,7 @@ class Workflow(PrototypeSQL):
                            'completed': 1,
                            'submitted': 1,
                            'path': path,
-                           'runpath': root}
+                           'runpath': runpath}
 
         key_value_pairs.update(prototype)
         key_value_pairs.update(cell_parameters)
