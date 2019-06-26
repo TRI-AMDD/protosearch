@@ -10,7 +10,7 @@ from ase.db import connect
 from protosearch.build_bulk.oqmd_interface import OqmdInterface
 from protosearch.build_bulk.classification import get_classification
 from protosearch.build_bulk.cell_parameters import CellParameters
-from protosearch.build_bulk.enumeration import OqmdEnumeration
+from protosearch.build_bulk.enumeration import AtomsEnumeration
 
 
 class BuildBulkTest(unittest.TestCase):
@@ -24,7 +24,7 @@ class BuildBulkTest(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
     def test_oqmd_enumeration(self):
-        E = OqmdEnumeration()
+        E = AtomsEnumeration()
         formulas = E.get_formulas(elements={'A': ['Fe', 'Ag', 'Ru'],
                                             'B': ['O', 'N'],
                                             'C': ['C', 'B']},
