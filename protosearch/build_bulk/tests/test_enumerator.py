@@ -7,6 +7,7 @@ import numpy as np
 from ase.io import read
 
 from protosearch.build_bulk.enumeration import Enumeration
+from protosearch.build_bulk.enumeration import AtomsEnumeration
 from protosearch.build_bulk.classification import get_classification
 
 
@@ -20,11 +21,17 @@ class EnumerationTest(unittest.TestCase):
         os.chdir(self.pwd)
         shutil.rmtree(self.tempdir)
 
-    def test_enumeration(self):
-        E = Enumeration("2_3", num_start=1, num_end=6, SG_start=4, SG_end=5)
-        E.store_enumeration('2_3.db')
+    def test1_enumeration(self):
+        E = Enumeration("1_2", num_start=1, num_end=5, SG_start=20, SG_end=22)
+        E.store_enumeration('1_2.db')
 
-    def test_classification(self):
+    def test2_atoms_enumeration(self):
+        E = AtomsEnumeration(elements={'A': ['Fe', 'Ru', 'Ir'],
+                                       'B': ['O']})  # ,
+        # 'C': ['C']})
+        E.store_atom_enumeration('1_2.db')
+
+    def test3_classification(self):
         path = sys.path[0]
         atoms = read(path + '/Se_mp-570481_conventional_standard.cif')
         result, param = get_classification(atoms)
