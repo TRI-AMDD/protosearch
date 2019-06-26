@@ -127,7 +127,7 @@ class ActiveLearningLoop:
             AE = AtomsEnumeration(elements)
             AE.store_atom_enumeration(filename=self.db_filename)
         else:
-            raise NotImplementedError, 'OQMD interface not implemented'
+            raise NotImplementedError  #OQMD interface not implemented
         
     def generate_fingerprints(self, code='catlearn', ids=None):
         self.DB._connect()
