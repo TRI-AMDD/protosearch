@@ -115,8 +115,6 @@ class ActiveLearningLoop:
         stoichiometries, elements =\
             get_stoich_from_formulas(self.chemical_formulas)
 
-        print(stoichiometries, elements)
-
         if self.source == 'prototypes':
             for stoichiometry in stoichiometries:
                 E = Enumeration(stoichiometry, num_start=1, num_end=3,
