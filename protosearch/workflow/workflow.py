@@ -196,8 +196,8 @@ class Workflow(PrototypeSQL):
         running_ids = []
         for d in self.ase_db.select(submitted=1, completed=0):
             path = d.path + '/simulation'
-            calcid = d.id
-            status = self.check_job_status(path, calcid)
+            calcid0 = d.id
+            status, calcid = self.check_job_status(path, calcid0)
             status_count[status] += 1
             if status == 'completed':
                 completed_ids += [calcid]
@@ -222,10 +222,10 @@ class Workflow(PrototypeSQL):
                 try:  # Sometimes outcar is corrupted
                     atoms = ase.io.read(root + '/OUTCAR')
                     status = 'completed'
-                    self.save_completed_calculation(atoms,
-                                                    path,
-                                                    root,
-                                                    calcid)
+                    calcid = self.save_completed_calculation(atoms,
+                                                             path,
+                                                             root,
+                                                             calcid)
                 except:
                     print("Couldn't read OUTCAR")
                     status = 'errored'
@@ -236,7 +236,7 @@ class Workflow(PrototypeSQL):
                 self.save_failed_calculation(root, calcid)
                 break
 
-        return status
+        return status, calcid
 
     def save_completed_calculation(self, atoms, path, runpath, calcid):
 
@@ -248,6 +248,7 @@ class Workflow(PrototypeSQL):
         key_value_pairs = {'relaxed': 1,
                            'completed': 1,
                            'submitted': 1,
+                           'initial_id': calcid,
                            'path': path,
                            'runpath': runpath}
 
@@ -259,7 +260,12 @@ class Workflow(PrototypeSQL):
 
         atoms = set_calculator_info(atoms, param_dict)
 
-        self.ase_db.write(atoms, key_value_pairs)
+        newcalcid = self.ase_db.write(atoms, key_value_pairs)
+        self.ase_db.update(id=calcid,
+                           final_id=newcalcid,
+                           completed=1)
+
+        return newcalcid
 
     def save_failed_calculation(self, runpath, calcid):
 
