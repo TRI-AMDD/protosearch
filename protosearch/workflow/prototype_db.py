@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import json
+import numpy as np
 import ase.db
 from ase.db.sqlite import SQLite3Database
 from ase.io import read
@@ -24,17 +25,17 @@ init_commands = [
     wyckoffs text);""",
 
     """CREATE TABLE fingerprint (
-    id integer,
+    id integer PRIMARY KEY,
     input text,
     output text,
     FOREIGN KEY (id) REFERENCES systems(id));
     """,
 
     """CREATE TABLE prediction (
-    id integer,
-    Ef real,
-    var real,
-    FOREIGN KEY (id) REFERENCES systems(id));
+    batch_no,
+    ids text,
+    energies text,
+    uncertainties text,
     """,
 
     """CREATE TABLE enumeration (
@@ -378,19 +379,65 @@ class PrototypeSQL:
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
+        cur.execute('SELECT count(id) from fingerprint where id={}'.format(id))
+        count = cur.fetchall()[0][0]
+
         input_data = json.dumps(input_data.tolist())
-        columns = 'id, input'
-        values = "{}, '{}'".format(id, input_data)
+        columns = ['id', 'input']
+        #columns = 'id, input'
+        values = [id, input_data]
+        #values = "{}, '{}'".format(id, input_data)
+
         if output_data:
             output_data = json.dumps(output_data)
-            columns += ', output'
-            values += ", '{}'".format(output_data)
+            columns += ['output']
+            values += [output_data]  # ", '{}'".format(output_data)
 
-        cur.execute('INSERT INTO fingerprint ({}) VALUES ({})'
-                    .format(columns, values))
-
+        values = ['{}'.format(v) if isinstance(v, int) else "'{}'".format(v)
+                  for v in values]
+        if count == 0:
+            columns = ','.join(columns)
+            values = ','.join(values)
+            cur.execute(
+                'INSERT INTO fingerprint ({}) VALUES ({})'.format(columns, values))
+        elif count == 1:
+            collist = ['{}={}'.format(columns[i], values[i])
+                       for i in range(1, len(columns))]
+            collist = ','.join(collist)
+            cur.execute(
+                "UPDATE fingerprint set {} where id={}".format(collist, id))
         con.commit()
         con.close()
+
+    def get_fingerprints(self, ids):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        ids = sorted(ids)
+        ids = [str(i) for i in ids]
+        id_str = ','.join(ids)
+        cur.execute(
+            'SELECT * from fingerprint where id in ({}) order by id'.format(id_str))
+        data = cur.fetchall()
+        feature_matrix = []
+        target_list = []
+        for d in data:
+            feature_matrix += [json.loads(d[1])]
+            if d[2]:
+                target_list += [json.loads(d[2]).get('Ef', None)]
+            else:
+                target_list += [None]
+        return np.array(feature_matrix), np.array(target_list)
+
+    def get_new_fingerprint_ids(self, completed=True):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+
+        cur.execute('SELECT id from fingerprint where output is not null')
+        data = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
 
     def save_predictions(self, ids, Efs, var):
         # Just save formation energy and uncertainty for now
@@ -399,7 +446,6 @@ class PrototypeSQL:
         self._initialize(con)
         cur = con.cursor()
         for i, id in enumerate(ids):
-
             cur.execute('INSERT INTO prediction VALUES ({}, {}, {})'.format(
                 id, Efs[i], var[i]))
 
