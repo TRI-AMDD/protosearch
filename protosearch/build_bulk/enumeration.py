@@ -1,7 +1,9 @@
 import string
 import json
 import numpy as np
+from pathos.multiprocessing import ProcessingPool as Pool
 import bulk_enumerator as be
+from ase.symbols import string2symbols
 
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.workflow.prototype_db import PrototypeSQL
@@ -65,9 +67,8 @@ class Enumeration():
         return enumerations
 
     def store_enumeration(self, filename=None):
-
-        E = be.enumerator.ENUMERATOR()
         for SG in range(self.SG_start, self.SG_end + 1):
+            E = be.enumerator.ENUMERATOR()
             enumerations = E.get_bulk_enumerations(self.stoichiometry,
                                                    self.num_start,
                                                    self.num_end,
@@ -133,36 +134,65 @@ class AtomsEnumeration():
         for key, value in self.elements.items():
             self.elements[key] = map_elements(value)
 
-    def store_atom_enumeration(self, filename=None):
+    def store_atom_enumeration(self, filename=None, multithread=False):
+        self.filename = filename
         DB = PrototypeSQL(filename=filename)
+        DB._connect()
+        N0 = DB.ase_db.count()
 
         prototypes = DB.select()
+        Nprot = len(prototypes)
+        pool = Pool()
 
-        for prototype in prototypes:
-            species_lists = self.get_species_lists(prototype['species'])
-            cell_parameters = prototype.get('cell_parameters', None)
-            if cell_parameters:
-                cell_parameters = json.load(cell_parameters)
+        import time
+        t0 = time.time()
+        if multithread:
+            res = pool.amap(self.store_atoms_for_prototype, prototypes)
+            while not res.ready():
+                N = DB.ase_db.count() - N0
+                t = time.time() - t0
+                N_per_t = N / t
+                if N > 0:
+                    print('---------------------------------')
+                    print(
+                        "{}/{} structures generated in {:.2f} sec".format(N, Nprot, t))
+                    print("{} sec / structure".format(t / N))
+                    print('Estimated time left: {:.2f} min'.format(
+                        Nprot / N_per_t / 60))
+                print('---------------------------------')
+                time.sleep(10)
+        else:
+            for prototype in prototypes:
+                self.store_atoms_for_prototype(prototype)
 
-            for species in species_lists:
-                BB = BuildBulk(prototype['spacegroup'],
-                               prototype['wyckoffs'],
-                               species,
-                               cell_parameters=cell_parameters
-                               )
-                BB.get_poscar()
-                atoms = BB.get_atoms_from_poscar()
-                key_value_pairs = {'p_name': prototype['name'],
-                                   'spacegroup': prototype['spacegroup'],
-                                   'wyckoffs':
-                                   json.dumps(prototype['wyckoffs']),
-                                   'species': json.dumps(species),
-                                   'relaxed': 0,
-                                   'completed': 0,
-                                   'submitted': 0}
+    def store_atoms_for_prototype(self, prototype):
+        species_lists = self.get_species_lists(prototype['species'])
+        cell_parameters = prototype.get('cell_parameters', None)
+        if cell_parameters:
+            cell_parameters = json.load(cell_parameters)
 
-                if atoms:
+        for species in species_lists:
+            BB = BuildBulk(prototype['spacegroup'],
+                           prototype['wyckoffs'],
+                           species,
+                           cell_parameters=cell_parameters
+                           )
+            BB.get_poscar()
+            atoms = BB.get_atoms_from_poscar()
+            key_value_pairs = {'p_name': prototype['name'],
+                               'spacegroup': prototype['spacegroup'],
+                               'wyckoffs':
+                               json.dumps(prototype['wyckoffs']),
+                               'species': json.dumps(species),
+                               'relaxed': 0,
+                               'completed': 0,
+                               'submitted': 0}
+            if atoms:
+                with PrototypeSQL(filename=self.filename) as DB:
                     DB.ase_db.write(atoms, key_value_pairs)
+            else:
+                print('no atoms?')
+        return 1
 
     def get_species_lists(self, gen_species):
         elements = self.elements
@@ -266,3 +296,29 @@ def map_elements(key):
                        'all': all_elements}
 
     return key_to_elements[key]
+
+
+def get_stoich_from_formulas(formulas):
+    alphabet = ['A', 'B', 'C', 'D', 'E']
+    stoichs = []
+    elements = {}
+    for formula in formulas:
+        stoich, unique_symbols = formula2stoich(formula)
+        stoichs += [stoich]
+        for i, us in enumerate(unique_symbols):
+            if not alphabet[i] in elements:
+                elements[alphabet[i]] = []
+            elements[alphabet[i]] += [us]
+    stoichs = list(set(stoichs))
+    return stoichs, elements
+
+
+def formula2stoich(formula):
+    symbols = string2symbols(formula)
+    unique_symbols = list(set(symbols))
+    count = [symbols.count(us) for us in unique_symbols]
+    idx = np.argsort(count)
+    count = [count[i] for i in idx]
+    unique_symbols = [unique_symbols[i] for i in idx]
+    stoich = '_'.join([str(c) for c in count])
+    return stoich, unique_symbols
