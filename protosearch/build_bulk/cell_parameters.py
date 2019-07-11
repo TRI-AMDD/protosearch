@@ -1,7 +1,10 @@
+import sys
 import io
+import time
 import numpy as np
 from numpy.random import rand
 import ase
+from ase import Atoms, Atom
 from ase import visualize
 from ase.geometry import get_distances, cell_to_cellpar, cellpar_to_cell
 from ase.data import atomic_numbers as a_n
@@ -11,6 +14,26 @@ from ase.geometry.geometry import wrap_positions
 import bulk_enumerator as be
 
 from protosearch.build_bulk.classification import get_classification
+from protosearch import build_bulk
+
+path = build_bulk.__path__
+wyckoff_data = path[0] + '/Wyckoff.dat'
+
+crystal_class_coordinates = {'P': [[0, 0, 0]],
+                             'A': [[0, 0, 0],
+                                   [0, 0.5, 0.5]],
+                             'C': [[0, 0, 0],
+                                   [0.5, 0.5, 0]],
+                             'I': [[0, 0, 0],
+                                   [0.5, 0.5, 0.5]],
+                             'R': [[0, 0, 0]],
+                             'F': [[0, 0, 0],
+                                   [0, 0.5, 0.5],
+                                   [0.5, 0, 0.5],
+                                   [0.5, 0.5, 0]],
+                             'H': [[0, 0, 0],
+                                   [2/3, 1/3, 1/3],
+                                   [1/3, 2/3, 2/3]]}
 
 
 class CellParameters:
@@ -59,7 +82,6 @@ class CellParameters:
                 self.angle_parameters += [p]
             elif p in ['a', 'b/a', 'c/a']:
                 self.lattice_parameters += [p]
-
         self.set_lattice_dof()
         self.parameter_guess = self.initial_guess()
 
@@ -82,8 +104,8 @@ class CellParameters:
             master_parameters = clean_parameter_input(master_parameters)
             cell_parameters.update(master_parameters)
         atoms = self.get_atoms(fix_parameters=cell_parameters)
-
         optimize_wyckoffs = False
+
         if not np.all([c in master_parameters
                        for c in self.coor_parameters]):
             optimize_wyckoffs = True
@@ -98,19 +120,30 @@ class CellParameters:
         """
         if not np.all([c in master_parameters for c in self.lattice_parameters]):
             if self.verbose:
-                print('Optimizing lattice constants')
-            cell_parameters = self.get_lattice_constants(cell_parameters,
-                                                         optimize_wyckoffs)
+                print('Optimizing lattice constants for {} - {} - {}'
+                      .format(self.spacegroup, self.wyckoffs, self.species))
+
+            cell_parameters, covalent_density = \
+                self.get_lattice_constants(cell_parameters,
+                                           optimize_wyckoffs)
+            niter = 0
+            while covalent_density < 0.1 and niter < 5:
+                print('Density is very low, running additional optimization')
+                cell_parameters, covalent_density =\
+                    self.get_lattice_constants(cell_parameters,
+                                               optimize_wyckoffs)
+                niter += 1
+            if not cell_parameters:
+                return None
         cell_parameters.update(master_parameters)
         atoms = self.get_atoms(fix_parameters=cell_parameters)
-
         if self.check_prototype(atoms):
             out = cell_parameters
         else:
             if self.verbose:
                 print("Structure reduced to another spacegroup")
             out = None
-        return(out)
+        return out
 
     def set_lattice_dof(self):
         """Set degrees of freedom for lattice constants and angles
@@ -131,7 +164,7 @@ class CellParameters:
                             'gamma': 90}
 
         elif 75 <= sg <= 142:  # Tetragonal
-            relax = [[0, 1], 2]  # a = c
+            relax = [[0, 1], 2]  # a = b
             fixed_angles = {'alpha': 90, 'beta': 90,
                             'gamma': 90}
 
@@ -215,13 +248,13 @@ class CellParameters:
 
         if not sg2 == self.spacegroup:
             if self.verbose:
-                print('Symmetry reduced to {} from {}'.format(
-                    sg2, self.spacegroup))
+                print('Symmetry reduced from spacegroup {} to {}'.format(
+                    self.spacegroup, sg2))
             return False
         if not wyckoff_species2 == wyckoff_species2:
             if self.verbose:
-                print('Wyckoffs reduced to {} from {}'.format(
-                    w2, self.wyckoffs))
+                print('Wyckoffs changes from {} to {}'.format(
+                    self.wyckoffs, w2))
             return False
 
         return True
@@ -256,7 +289,7 @@ class CellParameters:
             parameter_guess.update({'gamma': 84})
 
         for i, p in enumerate(self.coor_parameters):
-            parameter_guess.update({p: rand(1)[0] * 0.9})
+            parameter_guess.update({p: rand(1)[0] * 0.99})
 
         self.parameter_guess = parameter_guess
 
@@ -271,8 +304,8 @@ class CellParameters:
     def get_wyckoff_coordinates(self, view_images=False):
         # Determine high-symmetry positions taken in the unit cell.
         atoms = self.get_atoms()
-        relative_positions = np.dot(atoms.cell, atoms.positions.T).T / \
-            np.linalg.norm(atoms.cell, axis=1) ** 2
+        relative_positions = np.dot(np.linalg.inv(
+            atoms.cell.T), atoms.positions.T).T
         high_sym_idx = []
         taken_positions = []
         for i, p in enumerate(relative_positions):
@@ -290,15 +323,16 @@ class CellParameters:
 
         w_free_param = {}
         parameters_axis = {'x': [], 'y': [], 'z': []}
-        for w in set(self.wyckoffs):
-            w_free_param.update({w: []})
-            for i in range(0, 100):
-                for c in [c for c in self.coor_parameters
-                          if w + str(i) == c[1:]]:
-                    direction = c.replace(w + str(i), '')
-                    xyz = dir_map[direction]
-                    if not xyz in w_free_param[w]:
-                        w_free_param[w] += [dir_map[direction]]
+
+        for iw, w in enumerate(self.wyckoffs):
+            w_enum = w + str(iw)
+            w_free_param.update({w_enum: []})
+            for c in [c for c in self.coor_parameters
+                      if w_enum == c[1:]]:
+                direction = c.replace(w_enum, '')
+                xyz = dir_map[direction]
+                if not xyz in w_free_param[w_enum]:
+                    w_free_param[w_enum] += [dir_map[direction]]
                     parameters_axis[direction] += [c]
         self.w_free_param = w_free_param
         for direction, parameters in parameters_axis.items():
@@ -314,6 +348,7 @@ class CellParameters:
                                         for t in taken_positions[:]])
             else:
                 high_sym_pos0 = []
+
             # Add other existing high symmetry points
             high_sym_pos += [h for h in high_sym_pos0 if np.any(
                 [np.isclose(h, value) for value in [1/4, 1/3, 2/3, 3/4]])]
@@ -338,7 +373,8 @@ class CellParameters:
                                      high_sym_pos[i + 1],
                                      int(n_points_arr[i]) + 2)[1: -1])
             # Small random shift
-            variables += (np.random.random(len(variables)) - 0.5) / 10
+            variables += (rand(len(variables)) - 0.5) / \
+                100 * atoms.get_number_of_atoms()
 
             # Shift slightly away from other high symmetry positions
             for i, v in enumerate(variables):
@@ -352,7 +388,6 @@ class CellParameters:
                 idx = list(range(cut, len(variables),
                                  n_splits))
                 variables_shuffle += list(np.array(variables)[idx])
-
             for i, v in enumerate(variables_shuffle):
                 self.parameter_guess.update({parameters[i]: v})
         return self.parameter_guess
@@ -380,11 +415,14 @@ class CellParameters:
             species += [noble[i]]
 
         atoms = self.get_atoms(fix_parameters=fix_parameters, species=species)
-        relative_positions = np.dot(atoms.cell, atoms.positions.T).T / \
-            np.linalg.norm(atoms.cell, axis=1) ** 2
+        relative_positions = np.dot(np.linalg.inv(
+            atoms.cell.T), atoms.positions.T).T
+
         sorted_atoms = ase.Atoms(cell=atoms.cell, pbc=True)
         multiplicity = []
         atoms_wyckoffs = []
+        self.symmetry_map = {}
+        self.wyckoff_map = {}
         symmetry_map = {}
         position_symmetries = []
         self.free_atoms = []
@@ -392,6 +430,10 @@ class CellParameters:
             species[i_w] = self.species[i_w]
             atoms_test = self.get_atoms(fix_parameters=fix_parameters,
                                         species=species)
+            wyckoff_coordinate = []
+            for direction in ['x', 'y', 'z']:
+                wyckoff_coordinate += [
+                    fix_parameters.get(direction + w + str(i_w), 0)]
 
             count_added = 0
             for atom_test in atoms_test:
@@ -401,115 +443,140 @@ class CellParameters:
                         count_added += 1
                         sorted_atoms += atom_test
                         atoms[i].symbol = atom_test.symbol
-                        atoms_wyckoffs += [w]
+                        atoms_wyckoffs += [w + str(i_w)]
                         if i_w in self.fixed_wyckoff_idx:
                             self.free_atoms += [0]
                         else:
                             self.free_atoms += [1]
                         if count_added == 1:
                             continue
-                        # if multiplicity > 1, map out symmetries
-                        pos1 = np.array(sorted_atoms[-1].position)
-                        pos2 = np.array(sorted_atoms[-2].position)
-
-                        pos2min = \
-                            np.array(wrap_positions([-sorted_atoms[-2].position],
-                                                    atoms.cell)[0])
-                        even = np.where(np.isclose(pos1, pos2))[0]
-                        odd = np.where(np.isclose(pos1, pos2min))[0]
-
-                        sym = []
-                        for i in range(3):
-                            if i in even:
-                                sym += [1]
-                            elif i in odd:
-                                sym += [-1]
-                            else:
-                                sym += [0]
-                        n1 = str(len(sorted_atoms) - 2)
-                        n2 = str(len(sorted_atoms) - 1)
-
-                        symmetry_map[n1] = {n2: sym}
-                        symmetry_map[n2] = {n1: sym}
-
             multiplicity += [count_added] * count_added
 
-            if count_added == 1:
-                continue
+            self.assign_wyckoff_symmetries(w, sorted_atoms,
+                                           count_added)
 
-        self.symmetry_map = symmetry_map
         self.atoms_wyckoffs = atoms_wyckoffs
         self.multiplicity = multiplicity
         return sorted_atoms
 
-    def get_wyckoff_coordinates_old(self, view_images=False):
-        """
-        Get an estimate for free wyckoff coordinates. The positions are
-        optimized from the interatomic distances, d, by mininizing
-        the repulsion R = \Sum_{i>j} 1/d^12_{ij}.
+    def get_wyckoff_symmetries(self, wyckoff_position):
 
-        Since the initial guess is random, the structure is going to be
-        different for each run. *** Other solutions for this?
-        """
+        wyckoff_array = np.zeros([0, 3, 4])
+        with open(wyckoff_data, 'r') as f:
+            i_sg = np.inf
+            i_w = np.inf
+            for i, line in enumerate(f):
+                if '1 {} '.format(self.spacegroup) in line \
+                   and not i_sg < np.inf:
+                    i_sg = i
+                    SG_letter = line.split(' ')[2][0]
+                    class_coordinates = crystal_class_coordinates[SG_letter]
 
-        atoms = self.get_atoms()
-        natoms = atoms.get_number_of_atoms()
+                if i > i_sg:
+                    if len(line) == 1:
+                        break
+                    if line.split(' ')[1] == wyckoff_position:
+                        i_w = i
 
-        # get triangle of matrix without diagonal
-        Dm, distances = get_interatomic_distances(atoms)
-        R0 = np.sum(1 / (distances ** 12))  # initial repulsion
-        r0 = R0
-        fix_parameters = {}
-        for coor_param in self.coor_parameters:
-            fix_parameters.update(
-                {coor_param: self.parameter_guess[coor_param]})
+                    if i > i_w:
+                        if len(line) < 40:
+                            break
 
-        images = []
-        direction = 1
-        Diff = 1
-        j = 1
-        while Diff > 0.05 and j < 11:  # Outer convergence criteria
-            if self.verbose:
-                print('Wyckoff coordinate iteration {}, conv: {}'.format(
-                    j, Diff))
+                        arr = np.array(line.split(' ')[:-1], dtype=float)
+                        for cc in class_coordinates:
+                            x = arr[:4].copy()
+                            x[3] += cc[0]
+                            y = arr[4:8].copy()
+                            y[3] += cc[1]
+                            z = arr[8:].copy()
+                            z[3] += cc[2]
+                            new_arr = np.expand_dims(
+                                np.array([x, y, z]), axis=0)
 
-            # Change one parameter at the time
-            for coor_param in self.coor_parameters:
-                cp0 = self.parameter_guess[coor_param]
-                diff = 1
-                step_size = 1
-                k = 1
-                while diff > 0.05 and k < 10:  # Inner loop convergence criteria
-                    cptest = cp0 + direction * 0.2 / j * step_size
-                    temp_parameters = fix_parameters.copy()
-                    temp_parameters.update({coor_param: cptest})
-                    try:
-                        atoms = self.get_atoms(temp_parameters)
-                    except:
-                        continue
-                    Dm, distances = get_interatomic_distances(atoms)
+                            wyckoff_array = np.append(
+                                wyckoff_array, new_arr, axis=0)
 
-                    r = np.sum(1 / (distances ** 12))
-                    diff = abs(r - r0) / r0
+        return wyckoff_array
 
-                    if r < r0:  # Lower repulsion - apply change
-                        k += 1
-                        cp0 = cptest
-                        self.parameter_guess.update({coor_param: cp0})
-                        fix_parameters.update({coor_param: cp0})
-                        r0 = r
-                        images += [atoms]
-                    else:  # Try other direction, and decrease step size
-                        direction *= -1
-                        step_size += 0.9
+    def assign_wyckoff_symmetries(self, wyckoff_position, atoms, index):
 
-            Diff = abs(r0 - R0) / R0
-            R0 = r0
-            j += 1
+        count_atoms0 = len(atoms) - index
 
-        if view_images:
-            ase.visualize.view(images)
-        return self.parameter_guess
+        relative_positions = np.dot(np.linalg.inv(atoms.cell.T),
+                                    atoms[-index:].positions.T).T
+
+        wyckoff_array = self.get_wyckoff_symmetries(wyckoff_position)
+
+        # Determine principal wyckoff position
+        w_sym0 = wyckoff_array[0]
+        M = w_sym0[:, :3]
+        c = w_sym0[:, 3]
+        coordinate = None
+        for rp in relative_positions:
+            rp0 = np.dot(rp - c, M.T) + c
+            if np.all(np.isclose(rp, rp0)):
+                coordinate = rp
+                break
+        atoms_test = Atoms(cell=atoms.cell, pbc=True)
+        for w_sym in wyckoff_array:
+            # r_i = r_0 * M^T + c_i
+            # M: 3x3 matrix, coordinate mapping
+            # c + constant vector term in relative coordinate
+            M = w_sym[:, :3]
+            c = w_sym[:, 3]
+            w_rel_pos = np.dot(coordinate, M.T) + c
+            w_abs_pos = np.dot(atoms.cell.T, w_rel_pos)
+            atoms_test += Atom('O', position=w_abs_pos)
+
+        atoms.wrap()
+        atoms_test.wrap()
+
+        Dm, distances = get_distances(atoms[-index:].positions,
+                                      atoms_test.positions,
+                                      cell=atoms.cell, pbc=True)
+
+        d = np.nonzero(np.isclose(distances, 0, atol=0.001))
+        d_map = d[1][d[0]]
+        sym_indices = [count_atoms0 + i for i in range(index)]
+
+        for i in sym_indices:
+            self.symmetry_map.update({str(i): sym_indices})
+            self.wyckoff_map.update(
+                {str(i): wyckoff_array[d_map[i - count_atoms0]]})
+
+    def get_wyckoff_transform_vector(self, vector, index_a, index_b, cell):
+
+        vector = np.dot(np.linalg.inv(cell.T),
+                        vector)
+
+        vector0 = vector.copy()
+        normv0 = np.linalg.norm(vector0)
+        M_a = self.wyckoff_map[str(index_a)][:3, :][:, :3]
+        M_b = self.wyckoff_map[str(index_b)][:3, :][:, :3]
+        dim_y = list(range(3))
+        red_dim_x = 0
+        red_dim_y = 0
+        for i in range(3):
+            i_x = i - red_dim_x
+            i_y = i - red_dim_y
+            if np.all(M_a[i_x, :] == 0):
+                M_a = np.delete(M_a, i_x, 0)
+                vector = np.delete(vector, i_x, 0)
+                red_dim_x += 1
+            if np.all(M_a[:, i_y] == 0):
+                M_a = np.delete(M_a, i_y, 1)
+                M_b = np.delete(M_b, i_y, 1)
+                red_dim_y += 1
+
+        M_a_inv = np.dot(np.linalg.inv(np.dot(M_a.T, M_a)), M_a.T)
+        transform_vector = np.dot(M_b, np.dot(M_a_inv, vector))
+
+        if not list(transform_vector):
+            transform_vector = np.zeros(3)
+
+        transform_vector = np.dot(cell.T, transform_vector)
+
+        return transform_vector
 
     def get_angles(self, fix_parameters={}):
         """
@@ -586,11 +653,13 @@ class CellParameters:
         Get lattice constants by reducing the cell size (one direction at
         the time) until atomic distances on the closest pair reaches the
         sum of the covalent radii.
+
+        if the optimize_wyckoffs parameter is set, the wyckoff coordinates 
+        are optimized together with the lattice constants. 
         """
 
         if not fix_parameters:
             fix_parameters = self.parameter_guess
-
         if optimize_wyckoffs:
             atoms = self.get_sorted_atoms(fix_parameters)
         else:
@@ -605,125 +674,170 @@ class CellParameters:
 
         # scale up or down
         images = [atoms.copy()]
-        soft_limit = 1.3
+        soft_limit = 1.36
         scale = np.min(distances / self.min_distances / soft_limit)
         atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
-
         Dm, distances = get_interatomic_distances(atoms)
-        self.hard_limit = soft_limit
         images += [atoms.copy()]
+        # Volume taken up by atoms
+        covalent_volume = np.sum(4/3 * np.pi * covalent_radii ** 3)
 
-        self.covalent_volume = np.sum(4/3 * np.pi * covalent_radii ** 3)
-        cell_volume = atoms.get_volume()
-        density = self.covalent_volume / cell_volume
-        niter = 0
-        while density < 0.3:
-            for direction in self.d_o_f:
-                self.hard_limit *= 0.95
-                while np.all(distances > self.min_distances * self.hard_limit):
-                    cell = atoms.cell.copy()
-                    cell[direction, :] *= 0.95
-                    atoms.set_cell(cell, scale_atoms=True)
-                    Dm, distances = get_interatomic_distances(atoms)
-                    cell_volume = atoms.get_volume()
-                    density = self.covalent_volume / cell_volume
-
-                images += [atoms.copy()]
+        self.hard_limit = soft_limit
+        increment = 0.99
+        t0 = time.time()
+        t = 0
+        while self.hard_limit > 1:
+            cell_norm = np.linalg.norm(cell, axis=1)
+            axis_length_ix = np.argsort(
+                np.mean(cell_norm[d]) for d in self.d_o_f)
             if optimize_wyckoffs:
                 images += self.run_wyckoff_optimization_loop(atoms)
                 atoms = images[-1].copy()
                 Dm, distances = get_interatomic_distances(atoms)
-            niter += 1
+                cell_volume = atoms.get_volume()
+
+            for direction in self.d_o_f:
+                self.hard_limit *= increment
+                while np.all(distances > self.min_distances * self.hard_limit):
+                    cell = atoms.cell.copy()
+                    cell[direction, :] *= increment
+                    atoms.set_cell(cell, scale_atoms=True)
+                    Dm, distances = get_interatomic_distances(atoms)
+                    cell_volume = atoms.get_volume()
+                    t = time.time() - t0
+                images += [atoms.copy()]
+            t = time.time() - t0
 
         if np.any(distances < self.min_distances):
             scale = np.min(distances / self.min_distances)
             atoms.set_cell(atoms.cell * 1 / scale, scale_atoms=True)
             images += [atoms.copy()]
 
+        # Volume taken up by atoms
+        covalent_volume = np.sum(4/3 * np.pi * covalent_radii ** 3)
+        cell_volume = atoms.get_volume()
+        density = covalent_volume / cell_volume
+
         if view_images:
             ase.visualize.view(images)
 
-        prototype, parameter_dict = get_classification(atoms)
+        if not self.check_prototype(atoms):
+            print("Symmetry changed during optimization")
+            sys.exit()
+            return None
 
-        for param in parameter_dict:
-            if param in ['b', 'c']:
-                fix_parameters.update({param + '/a': parameter_dict[param]})
-            else:
-                fix_parameters.update({param: parameter_dict[param]})
+        new_parameters = self.read_cell_parameters(atoms)
+        fix_parameters.update(new_parameters)
+        return fix_parameters, density
 
-        return fix_parameters
+    def read_cell_parameters(self, atoms):
 
-    def get_move_pairs(self, distances):
-        move_indices = np.nonzero(distances / self.min_distances < 1)
+        new_parameters = {}
+        parameters = cell_to_cellpar(atoms.cell)
+        parameters[1:3] /= parameters[0]
+
+        for i, param in enumerate(['a', 'b/a', 'c/a',
+                                   'alpha', 'beta', 'gamma']):
+
+            if param == 'c/a' and not 'c/a' in self.parameters:
+                param = 'b/a'
+            new_parameters.update({param: parameters[i]})
+
+        if not self.coor_parameters:
+            return new_parameters
+
+        dir_map = ['x', 'y', 'z']
+        relative_positions = np.dot(np.linalg.inv(
+            atoms.cell.T), atoms.positions.T).T
+
+        for i, aw in enumerate(self.atoms_wyckoffs):
+            if aw == self.atoms_wyckoffs[i-1]:
+                continue
+            for d in self.w_free_param[aw]:
+                w_p_name = dir_map[d] + aw
+                new_parameters.update({w_p_name: relative_positions[i][d]})
+        return new_parameters
+
+    def get_move_pairs(self, distances, cutoff=1.1):
+        move_indices = np.nonzero(
+            distances / self.min_distances < self.hard_limit * cutoff)
         move_pairs = []
-        if len(move_indices[0]) > 0:
-            for m in range(len(move_indices[0])):
-                pair = sorted([move_indices[0][m], move_indices[1][m]])
-                if np.any([self.free_atoms[a] for a in pair]) and pair[0] != pair[1]:
-                    move_pairs += [pair]
-            if move_pairs:
-                move_pairs = np.unique(move_pairs, axis=0)
-        return move_pairs
+        if not len(move_indices[0]) > 0:
+            return []
+
+        for m in range(len(move_indices[0])):
+            pair = sorted([move_indices[0][m], move_indices[1][m]])
+            if np.any([self.free_atoms[a] for a in pair]) and pair[0] != pair[1]:
+                move_pairs += [pair]
+        if not move_pairs:
+            return []
+
+        move_pairs = np.unique(move_pairs, axis=0)
+        clean_move_pairs = []
+        del_pairs = []
+        for i, pair in enumerate(move_pairs):
+            sym_pairs = []
+            for a in self.symmetry_map[str(pair[0])]:
+                for b in self.symmetry_map[str(pair[1])]:
+                    sym_pairs += [sorted([a, b])]
+            if not np.any([sym_pair in move_pairs[:i] for sym_pair in sym_pairs]):
+                clean_move_pairs += [pair]
+
+        return clean_move_pairs
 
     def run_wyckoff_optimization_loop(self, atoms):
         Dm, distances = get_interatomic_distances(atoms)
         relative_distances = distances / self.min_distances
-        move_pairs = self.get_move_pairs(distances)
-        atoms_proxy = 0.9
+        move_pairs = self.get_move_pairs(distances, 1.1)
+        atoms_distance = 1
         niter = 0
-        images = []
-        while len(move_pairs) > 0 and niter < 10:
+        images = [atoms.copy()]
+        while len(move_pairs) > 0 and niter < atoms.get_number_of_atoms() * 3:
             for a1, a2 in move_pairs:
-                if not np.any([self.free_atoms[a] for a in [a1, a2]]):
-                    continue
-                if a1 == a2:
-                    continue
                 transform_vector = Dm[a1][a2]
                 transform_vector /= np.linalg.norm(transform_vector)
-                free_a1 = self.w_free_param[self.atoms_wyckoffs[a1]]
-                free_a2 = self.w_free_param[self.atoms_wyckoffs[a2]]
 
-                move = (1.02 - relative_distances[a1][a2]) * \
-                    self.min_distances[a1][a2] * atoms_proxy
-                if a1 in self.symmetry_map and a2 in self.symmetry_map:
-                    if a2 in self.symmetry_map[a1]:
-                        trans_dir1 = np.array([-1, -1, -1])[free_a1]
-                        trans_dir2 = trans_dir1 * \
-                            self.symmetry_map[a1][a2][free_a2]
-                        symmetry_pair = False
-                elif a1 in self.symmetry_map or a2 in self.symmetry_map:
-                    symmetry_pair = True
+                move = -np.abs(1.02 - relative_distances[a1][a2]) * \
+                    self.min_distances[a1][a2] * \
+                    atoms_distance * self.hard_limit
+                transform_vector *= move
+
+                # Project onto wyckoff coordinate vector
+                transform_vector1 = self.get_wyckoff_transform_vector(
+                    transform_vector, a1, a1, atoms.cell)
+
+                atoms[a1].position += transform_vector1
+
+                if not a2 in self.symmetry_map.get(str(a1), []):
+                    # No symmetry restrictions bewteen atom1 and atom2
+                    transform_vector2 = self.get_wyckoff_transform_vector(
+                        -transform_vector, a2, a2, atoms.cell)
+                    atoms[a2].position += transform_vector2
+                    sym_iter = [a1, a2]
+                    trans_vectors = [transform_vector1, transform_vector2]
                 else:
-                    trans_dir1 = np.array([-1, -1, -1])[free_a1]
-                    trans_dir2 = np.array([1, 1, 1])[free_a2]
-                    symmetry_pair = False
-                atoms[a1].position[free_a1] += transform_vector[free_a1] * \
-                    trans_dir1 * move
-                atoms[a2].position[free_a2] += transform_vector[free_a2] * \
-                    trans_dir2 * move
-                for a in self.symmetry_map:
-                    ia = int(a)
-                    if ia in [a1, a2]:
-                        co_trans = int(list(self.symmetry_map[a].keys())[0])
-                        if co_trans in [a1, a2]:
-                            continue
-                        sym = np.array(list(self.symmetry_map[a].values())[0])
-                        if ia == a1:
-                            trans_dir = trans_dir1 * sym[free_a1]
-                            free = free_a1
-                        elif ia == a2:
-                            trans_dir = trans_dir2 * sym[free_a2]
-                            free = free_a2
-                        atoms[co_trans].position[free] += \
-                            transform_vector[free] * trans_dir * move
-                atoms.wrap()
+                    sym_iter = [a1]
+                    trans_vectors = [transform_vector1]
+                for i, ia in enumerate(sym_iter):
+                    # Move all atoms in same wyckoff position as atom1
+                    # and atom2
+                    co_trans = self.symmetry_map.get(str(ia), []).copy()
+                    if ia in co_trans:
+                        co_trans.remove(ia)
+
+                    for ic in co_trans:
+                        transform_vector_w = \
+                            self.get_wyckoff_transform_vector(
+                                trans_vectors[i], ia, ic, atoms.cell)
+                        atoms[ic].position += transform_vector_w
+
+            atoms.wrap()
             images += [atoms.copy()]
             cell_volume = atoms.get_volume()
-            density = self.covalent_volume / cell_volume
             Dm, distances = get_interatomic_distances(atoms)
             relative_distances = distances / self.min_distances
-            move_pairs = self.get_move_pairs(distances)
-            atoms_proxy *= 0.9
+            atoms_distance *= 0.9
+            move_pairs = self.get_move_pairs(distances, 1.1 * atoms_distance)
             niter += 1
         return images
 
