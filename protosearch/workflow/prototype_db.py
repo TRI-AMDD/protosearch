@@ -35,7 +35,7 @@ init_commands = [
     batch_no,
     ids text,
     energies text,
-    uncertainties text,
+    uncertainties text);
     """,
 
     """CREATE TABLE enumeration (
@@ -62,7 +62,12 @@ init_commands = [
     n_completed int,
     n_errored int,
     most_stable_id int
-    );"""
+    );""",
+
+    """INSERT into status 
+    (id, enumerated, fingerprinted, initialized, n_completed, n_errored)
+    VALUES
+    (0, 0, 0, 0, 0, 0);"""
 ]
 
 columns = ['id', 'name', 'natom', 'spacegroup', 'npermutations', 'permutations',
@@ -121,6 +126,7 @@ class PrototypeSQL:
 
         if cur.fetchone()[0] == 0:  # no prototype table
             for init_command in init_commands:
+                print(init_command)
                 con.execute(init_command)  # Create tables
             con.commit()
 
@@ -135,33 +141,29 @@ class PrototypeSQL:
 
         status = cur.fetchall()[0]
         status_dict = {
-            'chemical_formulas': status[0],
-            'batch_size': status[1],
-            'enumerated': status[2],
-            'fingerprinted': status[3],
-            'initialized': status[4],
-            'last_batch_no': status[5],
-            'n_completed': status[6],
-            'n_errored': status[7],
-            'most_stable_id': status[8]}
+            'chemical_formulas': status[1],
+            'batch_size': status[2],
+            'enumerated': status[3],
+            'fingerprinted': status[4],
+            'initialized': status[5],
+            'last_batch_no': status[6],
+            'n_completed': status[7],
+            'n_errored': status[8],
+            'most_stable_id': status[9]}
         return status_dict
 
     def write_status(self, **args):
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
-        query = "INSERT into status (id) VALUES (0)"
-        cur.execute(query)
 
         for key, value in args.items():
             query = "UPDATE status SET {}=".format(key)
 
             if isinstance(value, str):
                 query += "'{}'".format(value)
-
-            if isinstance(value, list):
+            elif isinstance(value, list):
                 query += "'{}'".format(json.dumps(value))
-
             else:
                 query += "{}".format(value)
             query += ' where id=0'
@@ -234,6 +236,18 @@ class PrototypeSQL:
 
         return
 
+    def is_enumerated(self, stoichiometry, spacegroup, number, num_type):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        cur.execute(
+            """SELECT count(*) from enumeration where stoichiometry='{}' and spacegroup={} and
+            number={} and num_type='{}';""".format(stoichiometry, spacegroup, number, num_type))
+
+        count = cur.fetchall()[0]
+
+        return count
+
     def write_enumerated(self, stoichiometry, spacegroup, number, num_type):
         con = self.connection or self._connect()
         self._initialize(con)
@@ -298,10 +312,13 @@ class PrototypeSQL:
 
         query = ''
         for key, value in kwargs.items():
-            query += ' {}={}'.format(key, value)
+            if key == 'max_atoms':
+                query += " natom<{}".format(value)
+            else:
+                query += ' {}={}'.format(key, value)
         statement = 'SELECT * from prototype'
         if query:
-            statement += 'where {}'.format(query)
+            statement += ' where {}'.format(query)
         cur.execute(statement)
         data = cur.fetchall()
 
@@ -315,9 +332,6 @@ class PrototypeSQL:
                     result[l].update({k: data[l][i]})
 
         return result
-
-    def write_result(self, path):
-        atoms = read(path + '/OUTCAR')
 
     def get_prototype_id(self, p_name):
         con = self.connection or self._connect()
@@ -375,6 +389,26 @@ class PrototypeSQL:
         ids = [i[0] for i in ids]
         return ids
 
+    def get_completed_structure_ids(self, completed=1):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        if completed:
+            query =\
+                """select distinct id from number_key_values
+                where key='relaxed' and value=1"""
+        else:
+            query =\
+                """SELECT distinct id from number_key_values
+                where key='submitted' and value=0 and id not in
+                (SELECT distinct value from number_key_values
+                where key='initial_id')"""
+
+        cur.execute(query)
+        ids = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
+
     def save_fingerprint(self, id, input_data, output_data=None):
         con = self.connection or self._connect()
         self._initialize(con)
@@ -384,14 +418,12 @@ class PrototypeSQL:
 
         input_data = json.dumps(input_data.tolist())
         columns = ['id', 'input']
-        #columns = 'id, input'
         values = [id, input_data]
-        #values = "{}, '{}'".format(id, input_data)
 
         if output_data:
             output_data = json.dumps(output_data)
             columns += ['output']
-            values += [output_data]  # ", '{}'".format(output_data)
+            values += [output_data]
 
         values = ['{}'.format(v) if isinstance(v, int) else "'{}'".format(v)
                   for v in values]
@@ -434,8 +466,9 @@ class PrototypeSQL:
         self._initialize(con)
         cur = con.cursor()
 
-        cur.execute('SELECT id from fingerprint where output is not null')
-        data = cur.fetchall()
+        cur.execute(
+            'SELECT id from systems where energy is not null and id not in (SELECT distinct id from fingerprint)')
+        ids = cur.fetchall()
         ids = [i[0] for i in ids]
         return ids
 
