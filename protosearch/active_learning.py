@@ -14,7 +14,8 @@ class ActiveLearningLoop:
     def __init__(self,
                  chemical_formulas,
                  source='prototypes',
-                 batch_size=10):
+                 batch_size=10,
+                 max_atoms=None):
         """
         Class to run the active learning loop
 
@@ -34,6 +35,7 @@ class ActiveLearningLoop:
         self.chemical_formulas = chemical_formulas
         self.source = source
         self.batch_size = batch_size
+        self.max_atoms = max_atoms
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.DB = PrototypeSQL(self.db_filename)
         self.DB.write_status(
@@ -45,12 +47,12 @@ class ActiveLearningLoop:
         WF = Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
 
-        if self.status['initialized'] is None:
+        if not self.status['initialized']:
             self.batch_no = 1
             self.initialize()
-            self.DB.write_status(initialized=1)
             WF.submit_id_batch(self.batch_ids)
             self.DB.write_status(last_batch_no=self.batch_no)
+            self.DB.write_status(initialized=1)
         else:
             self.batch_no = self.status['last_batch_no']
         happy = False
@@ -83,6 +85,8 @@ class ActiveLearningLoop:
             self.generate_fingerprints(completed=True)
 
             # retrain ML model
+            self.train_ids = self.DB.get_completed_structure_ids()
+            self.test_ids = self.DB.get_completed_structure_ids(completed=0)
             self.train_ml()
 
             # acqusition -> select batch
@@ -94,14 +98,36 @@ class ActiveLearningLoop:
             WF.submit_id_batch(self.batch_ids)
             self.DB.write_status(last_batch_no=self.batch_no)
 
-    def initialize(self):
-        self.enumerate_structures()
-        self.DB.write_status(enumerated=1)
+    def test_run(self):
+        """Use already completed calculations to test the loop """
+        WF = Workflow(db_filename=self.db_filename)
+        self.status = self.DB.get_status()
 
-        self.generate_fingerprints()
-        self.DB.write_status(fingerprinted=1)
+        self.batch_no = 1
+        self.batch_ids = []
+        self.train_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
+        self.test_ids = self.DB.get_completed_structure_ids()
+
+        while len(self.test_ids) > 0:
+            self.train_ids += self.batch_ids
+            self.test_ids = [
+                t for t in self.test_ids if not t in self.train_ids]
+
+            self.train_ml()
+            self.acquire_batch()
+            self.plot_predictions()
+            self.batch_no += 1
+
+    def initialize(self):
+        if not self.status['enumerated']:
+            self.enumerate_structures()
+            self.DB.write_status(enumerated=1)
+        if not self.status['fingerprinted']:
+            self.generate_fingerprints()
+            self.DB.write_status(fingerprinted=1)
 
         # Run standard states?
+
         self.batch_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
 
     def evaluate(self):
@@ -117,14 +143,19 @@ class ActiveLearningLoop:
 
         if self.source == 'prototypes':
             for stoichiometry in stoichiometries:
-                E = Enumeration(stoichiometry, num_start=1, num_end=3,
+                npoints = sum([int(s) for s in stoichiometry.split('_')])
+                E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
                                 SG_start=1, SG_end=230, num_type='wyckoff')
+
                 E.store_enumeration(filename=self.db_filename)
 
-            AE = AtomsEnumeration(elements)
-            AE.store_atom_enumeration(filename=self.db_filename)
+            AE = AtomsEnumeration(elements, self.max_atoms)
+            AE.store_atom_enumeration(filename=self.db_filename,
+                                      multithread=True)
         else:
             raise NotImplementedError  # OQMD interface not implemented
+
+    # def expand_structures(self):
 
     def generate_fingerprints(self, code='catlearn', completed=False):
         self.DB._connect()
@@ -148,7 +179,8 @@ class ActiveLearningLoop:
                 Ef = row.get('Ef', None)
                 if Ef:
                     output_list[str(row.id)] = {'Ef': Ef}
-        fingerprint_data = get_voro_fingerprint(atoms_list)
+        if atoms_list:
+            fingerprint_data = get_voro_fingerprint(atoms_list)
         for i, id in enumerate(ids):
             output_data = output_list.get(str(id), None)
             self.DB.save_fingerprint(id, input_data=fingerprint_data[i],
@@ -158,35 +190,28 @@ class ActiveLearningLoop:
         ase_db = self.DB.ase_db
 
         # Should be updated to only run over new completed ids
-        for row in self.DB.ase_db.select('-Ef', completed=1, relaxed=1):
+        for row in self.DB.ase_db.select('-Ef', relaxed=1):
             energy = row.energy
             # MENG
+            # row.formula
+            #nA, nB
             references = [0, 0]  # Update
+
             formation_energy = (energy - sum(references)) / row.natoms
 
             ase_db.update(id=row.id, Ef=formation_energy)
 
     def train_ml(self):
-        train_ids = []
-        # replace by direct SQL
-        for row in self.DB.ase_db.select(completed=1, relaxed=1):
-            train_ids += [row.id]
-        test_ids = []
-        # replace by direct SQL
-        for row in self.DB.ase_db.select(completed=0, submitted=0):
-            test_ids += [row.id]
 
-        train_features, train_target = self.DB.get_fingerprints(ids=train_ids)
-
-        test_features, test_target = self.DB.get_fingerprints(ids=test_ids)
-
-        self.train_ids = train_ids
+        train_features, train_target = self.DB.get_fingerprints(
+            ids=self.train_ids)
         self.train_target = train_target
+        test_features, test_target = self.DB.get_fingerprints(
+            ids=self.test_ids)
 
         predictions = predict(train_features, train_target, test_features)
         self.energies = predictions['prediction']
         self.uncertainties = predictions['uncertainty']
-        self.test_ids = test_ids
 
     def acquire_batch(self, kappa=1.5):
 
@@ -240,5 +265,5 @@ class ActiveLearningLoop:
 
 
 if __name__ == "__main__":
-    ALL = ActiveLearningLoop(chemical_formulas=['IrO2'])
+    ALL = ActiveLearningLoop(chemical_formulas=['Cu2O'], max_atoms=10)
     ALL.run()
