@@ -126,6 +126,8 @@ class CellParameters:
             cell_parameters, covalent_density = \
                 self.get_lattice_constants(cell_parameters,
                                            optimize_wyckoffs)
+            if not cell_parameters:
+                return None
             niter = 0
             while covalent_density < 0.1 and niter < 5:
                 print('Density is very low, running additional optimization')
@@ -133,8 +135,6 @@ class CellParameters:
                     self.get_lattice_constants(cell_parameters,
                                                optimize_wyckoffs)
                 niter += 1
-            if not cell_parameters:
-                return None
         cell_parameters.update(master_parameters)
         atoms = self.get_atoms(fix_parameters=cell_parameters)
         if self.check_prototype(atoms):
@@ -723,8 +723,7 @@ class CellParameters:
 
         if not self.check_prototype(atoms):
             print("Symmetry changed during optimization")
-            sys.exit()
-            return None
+            return None, None
 
         new_parameters = self.read_cell_parameters(atoms)
         fix_parameters.update(new_parameters)
