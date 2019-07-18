@@ -23,8 +23,11 @@ def get_classification(atoms):
     species = b.get_species()
     parameters = b.get_parameter_values()
     b.delete()
-
+    structure_name = str(spacegroup)
+    for spec, wy_spec in zip(species, wyckoffs):
+        structure_name += '_{}_{}'.format(spec, wy_spec)
     prototype = {'p_name': name,
+                 'structure_name': structure_name,
                  'spacegroup': spacegroup,
                  'wyckoffs': wyckoffs,
                  'species': species}
