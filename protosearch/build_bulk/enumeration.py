@@ -1,3 +1,4 @@
+import sys
 import string
 import json
 import numpy as np
@@ -68,16 +69,27 @@ class Enumeration():
 
     def store_enumeration(self, filename=None):
         for SG in range(self.SG_start, self.SG_end + 1):
+            with PrototypeSQL(filename=filename) as DB:
+                enumerated = [DB.is_enumerated(self.stoichiometry, SG, num, self.num_type)
+                              for num in range(self.num_start, self.num_end + 1)]
+                if np.all(enumerated):
+                    print('spacegroup={} already enumerated'.format(SG))
+                    continue
             E = be.enumerator.ENUMERATOR()
-            enumerations = E.get_bulk_enumerations(self.stoichiometry,
-                                                   self.num_start,
-                                                   self.num_end,
-                                                   SG,
-                                                   SG,
-                                                   self.num_type)
+            try:
+                enumerations = E.get_bulk_enumerations(
+                    self.stoichiometry,
+                    self.num_start,
+                    self.num_end,
+                    SG,
+                    SG,
+                    self.num_type)
 
-            print('Found {} prototypes for spacegroup={}'.format(
-                len(enumerations), SG))
+                print('Found {} prototypes for spacegroup={}'.format(
+                    len(enumerations), SG))
+            except:
+                print('Found 0 prototypes for spacegroup={}'.format(SG))
+                      
             with PrototypeSQL(filename=filename) as DB:
                 for entry in enumerations:
                     DB.write_prototype(entry=entry)
@@ -128,8 +140,10 @@ class AtomsEnumeration():
     """
 
     def __init__(self,
-                 elements):
+                 elements,
+                 max_atoms=None):
         self.elements = elements
+        self.max_atoms = max_atoms
 
         for key, value in self.elements.items():
             self.elements[key] = map_elements(value)
@@ -140,7 +154,10 @@ class AtomsEnumeration():
         DB._connect()
         N0 = DB.ase_db.count()
 
-        prototypes = DB.select()
+        if self.max_atoms:
+            prototypes = DB.select(max_atoms=self.max_atoms)
+        else:
+            prototypes = DB.select()
         Nprot = len(prototypes)
         pool = Pool()
 
@@ -172,6 +189,14 @@ class AtomsEnumeration():
             cell_parameters = json.load(cell_parameters)
 
         for species in species_lists:
+            structure_name = str(prototype['spacegroup'])
+            for spec, wy_spec in zip(species, prototype['wyckoffs']):
+                structure_name += '_{}_{}'.format(spec, wy_spec)
+            with PrototypeSQL(filename=self.filename) as DB:
+                if DB.ase_db.count(structure_name=structure_name) > 0:
+                    print('{} is already enumerated'.format(structure_name))
+                    continue
+
             BB = BuildBulk(prototype['spacegroup'],
                            prototype['wyckoffs'],
                            species,
@@ -184,6 +209,7 @@ class AtomsEnumeration():
                                'wyckoffs':
                                json.dumps(prototype['wyckoffs']),
                                'species': json.dumps(species),
+                               'structure_name': structure_name,
                                'relaxed': 0,
                                'completed': 0,
                                'submitted': 0}
