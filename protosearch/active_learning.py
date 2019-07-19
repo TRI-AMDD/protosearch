@@ -5,7 +5,7 @@ import pylab as p
 
 from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration, get_stoich_from_formulas
 from protosearch.workflow.prototype_db import PrototypeSQL
-from protosearch.workflow.workflow import Workflow
+# from protosearch.workflow.workflow import Workflow
 from protosearch.ml_modelling.catlearn_interface import get_voro_fingerprint, predict
 
 
@@ -13,6 +13,7 @@ class ActiveLearningLoop:
 
     def __init__(self,
                  chemical_formulas,
+                 Workflow=None,
                  source='prototypes',
                  batch_size=10,
                  max_atoms=None):
@@ -33,6 +34,7 @@ class ActiveLearningLoop:
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
         self.chemical_formulas = chemical_formulas
+        self.Workflow = Workflow
         self.source = source
         self.batch_size = batch_size
         self.max_atoms = max_atoms
@@ -44,7 +46,7 @@ class ActiveLearningLoop:
     def run(self):
         """Run actice learning loop"""
 
-        WF = Workflow(db_filename=self.db_filename)
+        WF = self.Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
 
         if not self.status['initialized']:
@@ -100,7 +102,7 @@ class ActiveLearningLoop:
 
     def test_run(self):
         """Use already completed calculations to test the loop """
-        WF = Workflow(db_filename=self.db_filename)
+        WF = self.Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
 
         self.batch_no = 1
