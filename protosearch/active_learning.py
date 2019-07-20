@@ -16,7 +16,8 @@ class ActiveLearningLoop:
                  Workflow=None,
                  source='prototypes',
                  batch_size=10,
-                 max_atoms=None):
+                 max_atoms=None,
+                 check_frequency=60.):
         """
         Class to run the active learning loop
 
@@ -30,6 +31,8 @@ class ActiveLearningLoop:
             'oqmd_icsd': Experimental OQMD entries
             'oqmd_all': All OQMD structures
             'prototypes': Enumerate all prototypes.
+        check_frequency: float
+            Frequency that the active learning checks on the job state:
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
@@ -38,6 +41,7 @@ class ActiveLearningLoop:
         self.source = source
         self.batch_size = batch_size
         self.max_atoms = max_atoms
+        self.check_frequency = check_frequency
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.DB = PrototypeSQL(self.db_filename)
         self.DB.write_status(
@@ -71,7 +75,7 @@ class ActiveLearningLoop:
                 t = time.time() - t0
                 print('{} job(s) completed in {:.2f} min'.format(len(completed_ids),
                                                                  t / 60))
-                time.sleep(60)
+                time.sleep(self.check_frequency)
 
             self.DB.write_job_status()
 
