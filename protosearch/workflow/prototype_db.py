@@ -64,7 +64,7 @@ init_commands = [
     most_stable_id int
     );""",
 
-    """INSERT into status 
+    """INSERT into status
     (id, enumerated, fingerprinted, initialized, n_completed, n_errored)
     VALUES
     (0, 0, 0, 0, 0, 0);"""
@@ -254,7 +254,7 @@ class PrototypeSQL:
         cur = con.cursor()
 
         cur.execute(
-            """INSERT into enumeration (stoichiometry, spacegroup, number, num_type) 
+            """INSERT into enumeration (stoichiometry, spacegroup, number, num_type)
             VALUES ('{}', {}, {}, '{}')""".
             format(stoichiometry, spacegroup, number, num_type)
         )
