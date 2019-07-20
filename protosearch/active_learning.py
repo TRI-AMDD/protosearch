@@ -1,3 +1,12 @@
+"""
+
+TODO:
+  I made it so that the Workflow class is a input to the ALL class, but ideally
+  I'd like to be able to input a Workflow instance (not class) so that the
+  Workflow class can be instantiated outside of the ALL and we don't have to
+  worry about passing parameters into it
+"""
+
 import sys
 import time
 import numpy as np
@@ -23,6 +32,8 @@ class ActiveLearningLoop:
 
         Parameters:
         ----------
+        Workflow:
+            Workflow class to use
         chemical_formulas: list of strings
             chemical formulas to investigate, such as:
             ['IrO2', 'IrO3']
@@ -31,6 +42,10 @@ class ActiveLearningLoop:
             'oqmd_icsd': Experimental OQMD entries
             'oqmd_all': All OQMD structures
             'prototypes': Enumerate all prototypes.
+        batch_size: int
+            Number of calculations to run at a time
+        max_atoms:
+            TODO
         check_frequency: float
             Frequency that the active learning checks on the job state:
         """
