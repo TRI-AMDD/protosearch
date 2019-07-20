@@ -486,3 +486,35 @@ class PrototypeSQL:
         con.close()
 
     # def read_predictions(self, ids, EFs, var):
+
+    def get_pandas_tables(self, write_csv_tables=False):
+        """Convert SQL tables to Pandas dataframes.
+
+        Parameters:
+        ----------
+        write_csv_tables: Bool
+            Write data tables to .csv files to current working dir
+        """
+        import pandas as pd
+
+        def to_csv(db_file=None):
+            db = sqlite3.connect(db_file)
+            cursor = db.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+
+            tables_dict = {}
+            for table_name in tables:
+                table_name = table_name[0]
+                table = pd.read_sql_query("SELECT * from %s" % table_name, db)
+                tables_dict[table_name] = table
+                if write_csv_tables:
+                    table.to_csv(table_name + '.csv', index_label='index')
+            cursor.close()
+            db.close()
+
+            return(tables_dict)
+
+        tables = to_csv(db_file=self.filename)
+        return(tables)
