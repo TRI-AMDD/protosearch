@@ -40,8 +40,6 @@ class DummyWorkflow(PrototypeSQL):
 
     def recollect(self):
         print("Not actually calling trisync here")
-        # subprocess.call('trisync', cwd=self.basepath)
-        # self.collected = True
 
     def submit_id_batch(self, calc_ids, ncpus=1, calc_parameters=None):
         """Submit a batch of calculations. Takes a list of atoms
@@ -64,15 +62,7 @@ class DummyWorkflow(PrototypeSQL):
                               p_name=p_name):
             return
 
-        # Sub = TriSubmit(atoms=atoms,
-        #                 ncpus=ncpus,
-        #                 calc_parameters=calc_parameters,
-        #                 basepath=self.basepath)
-        #
-        # Sub.submit_calculation()
-
         key_value_pairs = {
-            # 'path': Sub.excpath,
             "submit_time": time.time(),
             'submitted': 1,
             }
