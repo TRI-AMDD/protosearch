@@ -442,6 +442,9 @@ class PrototypeSQL:
         con.close()
 
     def get_fingerprints(self, ids):
+        """
+        NOTE: Does this return the output in the same order as they're inputed
+        """
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
