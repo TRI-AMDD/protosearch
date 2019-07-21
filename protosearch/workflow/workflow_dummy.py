@@ -1,10 +1,13 @@
 import json
 import time
 
+import copy
+import numpy as np
 from protosearch.utils import get_basepath
 from protosearch.build_bulk.classification import get_classification
 # from protosearch.utils.standards import VaspStandards
 from .prototype_db import PrototypeSQL
+from protosearch.utils.dummy_calc import DummyCalc
 
 
 class DummyWorkflow(PrototypeSQL):
@@ -35,6 +38,9 @@ class DummyWorkflow(PrototypeSQL):
         super().__init__(filename=db_filename)
         self._connect()
         self.collected = False
+
+        # Will be dotted with fingerprints to produce dummy 'energy' output
+        self.random_vect = np.random.rand(1, 1000)[0]
         #__|
 
 
@@ -117,11 +123,13 @@ class DummyWorkflow(PrototypeSQL):
             # Job completed
             status = 'completed'
 
+            train_features, train_target = self.get_fingerprints([calcid])
+            shape = train_features.shape
+            random_vect = self.random_vect[0:shape[-1]]
+            dummy_energy = random_vect.dot(train_features[0]) / 1000
 
-            import copy
-            from protosearch.utils.dummy_calc import DummyCalc
             atoms = copy.deepcopy(atoms)
-            calc = DummyCalc(energy_zero=42.0)
+            calc = DummyCalc(energy_zero=dummy_energy)
             atoms.set_calculator(calc)
 
             new_calcid = self.save_completed_calculation(atoms, calcid)
