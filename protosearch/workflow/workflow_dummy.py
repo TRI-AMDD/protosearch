@@ -1,13 +1,13 @@
 import json
 import time
-
 import copy
 import numpy as np
 from protosearch.utils import get_basepath
 from protosearch.build_bulk.classification import get_classification
-# from protosearch.utils.standards import VaspStandards
 from .prototype_db import PrototypeSQL
 from protosearch.utils.dummy_calc import DummyCalc
+
+# from protosearch.utils.standards import VaspStandards
 
 
 class DummyWorkflow(PrototypeSQL):
@@ -153,9 +153,6 @@ class DummyWorkflow(PrototypeSQL):
                            'completed': 1,
                            'submitted': 1,
                            'initial_id': calcid,
-                           # 'energy_dummy': 42,
-                           # 'path': path,
-                           # 'runpath': runpath,
                            }
 
         key_value_pairs.update(prototype)
