@@ -117,6 +117,7 @@ class DummyWorkflow(PrototypeSQL):
         status = 'running'
         atoms = d.toatoms()
         calcid = d.id
+        print(calcid)  # TEMP
 
         time_submit = d.submit_time
         time_i = time.time()
@@ -133,8 +134,8 @@ class DummyWorkflow(PrototypeSQL):
             calc = DummyCalc(energy_zero=42.0)
             atoms.set_calculator(calc)
 
-            calcid = self.save_completed_calculation(atoms, calcid)
-
+            new_calcid = self.save_completed_calculation(atoms, calcid)
+            calcid = new_calcid
 
         else:
             # Job not completed
@@ -154,7 +155,7 @@ class DummyWorkflow(PrototypeSQL):
                            'completed': 1,
                            'submitted': 1,
                            'initial_id': calcid,
-                           'energy_dummy': 42,
+                           # 'energy_dummy': 42,
                            # 'path': path,
                            # 'runpath': runpath,
                            }

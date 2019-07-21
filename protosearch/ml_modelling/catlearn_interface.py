@@ -18,8 +18,15 @@ def get_voro_fingerprint(atoms_list):
 def predict(train_features, train_target, test_features):
     kernel = [{'type': 'gaussian', 'width': 1., 'scaling': 1., 'dimension': 'single'}]
 
-    GP = GaussianProcess(train_fp=train_features, train_target=train_target, kernel_list=kernel,
-                         regularization=1e-2, optimize_hyperparameters=True, scale_data=True)
+    GP = GaussianProcess(
+        train_fp=train_features,
+        train_target=train_target,
+        kernel_list=kernel,
+        regularization=1e-2,
+        optimize_hyperparameters=True,
+        # scale_data=True,
+        scale_data=False,  # True was breaking code for some reason | RF | 190719
+        )
 
     pred = GP.predict(test_fp=test_features, uncertainty=True)
 
