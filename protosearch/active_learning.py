@@ -10,13 +10,14 @@ TODO:
 import sys
 import time
 import numpy as np
+import pandas as pd
 import pylab as p
 
 from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration, get_stoich_from_formulas
 from protosearch.workflow.prototype_db import PrototypeSQL
-# from protosearch.workflow.workflow import Workflow
 from protosearch.ml_modelling.catlearn_interface import get_voro_fingerprint, predict
 from protosearch.ml_modelling.fingerprint import FingerPrint
+# from protosearch.workflow.workflow import Workflow
 
 
 class ActiveLearningLoop:
@@ -27,7 +28,10 @@ class ActiveLearningLoop:
                  source='prototypes',
                  batch_size=10,
                  max_atoms=None,
-                 check_frequency=60.):
+                 check_frequency=60.,
+                 frac_jobs_limit=0.7,
+                 stop_mode="job_fraction_limit",
+                 ):
         """
         Class to run the active learning loop
 
@@ -48,7 +52,14 @@ class ActiveLearningLoop:
         max_atoms:
             TODO
         check_frequency: float
-            Frequency that the active learning checks on the job state:
+            Frequency in (s) that the AL checks on the job state
+        frac_jobs_limit: float
+            Upper limit on the fraction of of jobs to be processed before
+            stoping the loop
+        stop_mode: str
+            Method by which the stop criteria is defined for the ALL
+
+            'job_fraction_limit'
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
@@ -58,6 +69,9 @@ class ActiveLearningLoop:
         self.batch_size = batch_size
         self.max_atoms = max_atoms
         self.check_frequency = check_frequency
+        self.frac_jobs_limit = frac_jobs_limit
+        self.stop_mode = stop_mode
+
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.DB = PrototypeSQL(self.db_filename)
         self.DB.write_status(
@@ -152,9 +166,43 @@ class ActiveLearningLoop:
 
         self.batch_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
 
+    def get_frac_of_systems_processed(self):
+        """
+        Get the fraction of structures that have been initiated.
+
+        Use this as a simple stop critieria for now
+        Doesn't currently consider whether the "processed" jobs complete,
+        failed, etc
+        """
+        tables = self.DB.get_pandas_tables(
+            tables_list=[
+                'number_key_values',
+                'prototype',
+                ],
+            )
+
+        orig_ids = list(set(tables["prototype"]["id"].tolist()))
+        num_systems = len(orig_ids)
+
+        all_ids = list(set(tables["number_key_values"]["id"].tolist()))
+        new_ids = [i for i in all_ids if i not in orig_ids]
+        num_processed_systems = len(new_ids)
+
+        frac_out = num_processed_systems / num_systems
+
+        return(frac_out)
+
     def evaluate(self):
         happy = False
-        # function to determine when the prediction ends
+
+        # Upper limit on Systems/Jobs processed
+        if self.stop_mode == "job_fraction_limit":
+            frac_i = self.get_frac_of_systems_processed()
+            print("fraction_i: ", frac_i)
+            if frac_i >= self.frac_jobs_limit:
+                print("HAPPY! Upper fraction of jobs procesed limit reached")
+                happy = True
+
         return happy
 
     def enumerate_structures(self):
