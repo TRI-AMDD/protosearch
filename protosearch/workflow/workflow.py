@@ -242,6 +242,8 @@ class Workflow(PrototypeSQL):
 
         self.ase_db.update(id=calcid,
                            completed=1)
+
+        batch_no = self.ase_db.get(id=calcid).get('batch', None)
         param_dict = params2dict(runpath + '/param')
         prototype, cell_parameters = get_classification(atoms)
 
@@ -251,6 +253,8 @@ class Workflow(PrototypeSQL):
                            'initial_id': calcid,
                            'path': path,
                            'runpath': runpath}
+        if batch_no:
+            key_value_pairs.update({'batch': batch_no})
 
         key_value_pairs.update(prototype)
         key_value_pairs.update(cell_parameters)
