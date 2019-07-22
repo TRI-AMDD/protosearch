@@ -215,7 +215,8 @@ class ActiveLearningLoop:
             for stoichiometry in stoichiometries:
                 npoints = sum([int(s) for s in stoichiometry.split('_')])
                 E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
-                                SG_start=5, SG_end=5, num_type='wyckoff')
+                                SG_start=1, SG_end=230, num_type='wyckoff')
+                                # SG_start=5, SG_end=5, num_type='wyckoff')  # For testing
 
                 E.store_enumeration(filename=self.db_filename)
 
