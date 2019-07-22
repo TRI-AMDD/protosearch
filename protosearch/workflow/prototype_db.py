@@ -33,9 +33,10 @@ init_commands = [
 
     """CREATE TABLE prediction (
     batch_no,
-    ids text,
-    energies text,
-    uncertainties text);
+    id integer,
+    energy real,
+    uncertainty real,
+    FOREIGN KEY (id) REFERENCES systems(id));
     """,
 
     """CREATE TABLE enumeration (
@@ -127,7 +128,10 @@ class PrototypeSQL:
         if cur.fetchone()[0] == 0:  # no prototype table
             for init_command in init_commands:
                 print(init_command)
-                con.execute(init_command)  # Create tables
+                try:
+                    con.execute(init_command)  # Create tables
+                except:
+                    pass
             con.commit()
 
         self.initialized = True
@@ -396,13 +400,13 @@ class PrototypeSQL:
         if completed:
             query =\
                 """select distinct id from number_key_values
-                where key='relaxed' and value=1"""
+                where key='relaxed' and value=1 order by id"""
         else:
             query =\
                 """SELECT distinct id from number_key_values
                 where key='submitted' and value=0 and id not in
                 (SELECT distinct value from number_key_values
-                where key='initial_id')"""
+                where key='initial_id') order by id"""
 
         cur.execute(query)
         ids = cur.fetchall()
@@ -465,24 +469,52 @@ class PrototypeSQL:
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
+        if completed:
+            query = 'SELECT id from systems where energy is not null and id not in (SELECT distinct id from fingerprint)'
+        else:
+            query = 'SELECT id from systems where id not in (SELECT distinct id from fingerprint)'
 
-        cur.execute(
-            'SELECT id from systems where energy is not null and id not in (SELECT distinct id from fingerprint)')
+        cur.execute(query)
         ids = cur.fetchall()
         ids = [i[0] for i in ids]
         return ids
 
-    def save_predictions(self, ids, Efs, var):
+    def write_predictions(self, batch_no, ids, Efs, var):
         # Just save formation energy and uncertainty for now
         # link to structure id
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
-        for i, id in enumerate(ids):
-            cur.execute('INSERT INTO prediction VALUES ({}, {}, {})'.format(
-                id, Efs[i], var[i]))
+
+        cur.execute('DELETE FROM prediction WHERE batch_no={}'.format(batch_no))
+        for i, idi in enumerate(ids):
+            cur.execute('INSERT INTO prediction VALUES ({}, {}, {}, {})'.format(
+                batch_no, idi, Efs[i], var[i]))
 
         con.commit()
         con.close()
 
-    # def read_predictions(self, ids, EFs, var):
+    def get_predictions(self, batch_no=None):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        if not batch_no:
+            cur.execute('SELECT distinct batch_no FROM prediction')
+            batch_nos = cur.fetchall()
+            batch_nos = [b[0] for b in batch_nos]
+        else:
+            batch_nos = [batch_no]
+
+        predictions = []
+        for b in batch_nos:
+            cur.execute(
+                'SELECT * FROM prediction where batch_no={};'.format(b))
+            data = cur.fetchall()
+            ids = [d[1] for d in data]
+            energies = np.array([float(d[2]) for d in data])
+            var = np.array([float(d[3]) for d in data])
+            predictions += [{'batch_no': b,
+                             'ids': ids,
+                             'energies': energies,
+                             'vars': var}]
+        return predictions
