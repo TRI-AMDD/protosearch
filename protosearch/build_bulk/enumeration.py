@@ -178,6 +178,7 @@ class AtomsEnumeration():
                         Nprot / N_per_t / 60))
                 print('---------------------------------')
                 time.sleep(10)
+            res = res.get()
         else:
             for prototype in prototypes:
                 self.store_atoms_for_prototype(prototype)
@@ -187,14 +188,12 @@ class AtomsEnumeration():
         cell_parameters = prototype.get('cell_parameters', None)
         if cell_parameters:
             cell_parameters = json.load(cell_parameters)
-
         for species in species_lists:
             structure_name = str(prototype['spacegroup'])
             for spec, wy_spec in zip(species, prototype['wyckoffs']):
                 structure_name += '_{}_{}'.format(spec, wy_spec)
             with PrototypeSQL(filename=self.filename) as DB:
                 if DB.ase_db.count(structure_name=structure_name) > 0:
-                    print('{} is already enumerated'.format(structure_name))
                     continue
 
             BB = BuildBulk(prototype['spacegroup'],
@@ -218,7 +217,6 @@ class AtomsEnumeration():
                     DB.ase_db.write(atoms, key_value_pairs)
             else:
                 print('no atoms?')
-        return 1
 
     def get_species_lists(self, gen_species):
         elements = self.elements
