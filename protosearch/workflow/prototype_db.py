@@ -490,15 +490,40 @@ class PrototypeSQL:
 
     # def read_predictions(self, ids, EFs, var):
 
-    def get_pandas_tables(self, write_csv_tables=False):
+    def get_pandas_tables(self,
+        write_csv_tables=False,
+        tables_list=None):
         """Convert SQL tables to Pandas dataframes.
 
         Parameters:
         ----------
         write_csv_tables: Bool
             Write data tables to .csv files to current working dir
+        tables_list: list or None
+            List of table names to retrieve if you don't want all of them
+            tables_list = [
+                'systems',
+                'sqlite_sequence',
+                'species',
+                'keys',
+                'text_key_values',
+                'number_key_values',
+                'information',
+                'prototype',
+                'fingerprint',
+                'prediction',
+                'enumeration',
+                'batch_status',
+                'status']
         """
         import pandas as pd
+
+        def get_table(table_name, db):
+            table = pd.read_sql_query("SELECT * from %s" % table_name, db)
+            # tables_dict[table_name] = table
+            if write_csv_tables:
+                table.to_csv(table_name + '.csv', index_label='index')
+            return(table)
 
         def to_csv(db_file=None):
             db = sqlite3.connect(db_file)
@@ -510,10 +535,15 @@ class PrototypeSQL:
             tables_dict = {}
             for table_name in tables:
                 table_name = table_name[0]
-                table = pd.read_sql_query("SELECT * from %s" % table_name, db)
-                tables_dict[table_name] = table
-                if write_csv_tables:
-                    table.to_csv(table_name + '.csv', index_label='index')
+
+                if tables_list is not None:
+                    if table_name in tables_list:
+                        table_i = get_table(table_name, db)
+                        tables_dict[table_name] = table_i
+                else:
+                    table_i = get_table(table_name, db)
+                    tables_dict[table_name] = table_i
+
             cursor.close()
             db.close()
 
