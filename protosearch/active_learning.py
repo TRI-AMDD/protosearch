@@ -16,6 +16,7 @@ from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration, ge
 from protosearch.workflow.prototype_db import PrototypeSQL
 # from protosearch.workflow.workflow import Workflow
 from protosearch.ml_modelling.catlearn_interface import get_voro_fingerprint, predict
+from protosearch.ml_modelling.fingerprint import FingerPrint
 
 
 class ActiveLearningLoop:
@@ -201,7 +202,22 @@ class ActiveLearningLoop:
                 if Ef:
                     output_list[str(row.id)] = {'Ef': Ef}
         if atoms_list:
-            fingerprint_data = get_voro_fingerprint(atoms_list)
+            # Kirsten's fingerprinting method
+            # fingerprint_data = get_voro_fingerprint(atoms_list)
+
+            # NOTE TODO In principle everytime a fingerprint is generated every
+            # other fingerprint should be updated (assuming we're
+            # standardizing the data, which we should)
+            df_atoms = pd.DataFrame(atoms_list)
+            df_atoms.columns = ["atoms"]
+            FP = FingerPrint(**{
+                "feature_methods": ["voronoi"], "input_data": df_atoms,
+                "input_index": ["atoms"]})
+            FP.generate_fingerprints()
+            # FP.clean_features()  # Doesn't work for just 1 atom now, fix
+            df_features = FP.fingerprints["voronoi"].values
+            fingerprint_data = df_features
+
         for i, id in enumerate(ids):
             output_data = output_list.get(str(id), None)
             self.DB.save_fingerprint(id, input_data=fingerprint_data[i],
