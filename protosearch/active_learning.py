@@ -1,12 +1,3 @@
-"""
-
-TODO:
-  I made it so that the Workflow class is a input to the ALL class, but ideally
-  I'd like to be able to input a Workflow instance (not class) so that the
-  Workflow class can be instantiated outside of the ALL and we don't have to
-  worry about passing parameters into it
-"""
-
 import sys
 import time
 import numpy as np
@@ -33,7 +24,7 @@ class ActiveLearningLoop:
                  stop_mode="job_fraction_limit",
                  ):
         """
-        Class to run the active learning loop
+        Module to run active learning loop
 
         Parameters:
         ----------
@@ -44,13 +35,11 @@ class ActiveLearningLoop:
             ['IrO2', 'IrO3']
         source: str
             Specify how to generate the structures. Options are:
-            'oqmd_icsd': Experimental OQMD entries
-            'oqmd_all': All OQMD structures
+            'oqmd_icsd': Experimental OQMD entries (not implemented)
+            'oqmd_all': All OQMD structures (not implemented)
             'prototypes': Enumerate all prototypes.
         batch_size: int
-            Number of calculations to run at a time
-        max_atoms:
-            TODO
+            number of DFT jobs to submit simultaneously.
         check_frequency: float
             Frequency in (s) that the AL checks on the job state
         frac_jobs_limit: float
@@ -58,8 +47,9 @@ class ActiveLearningLoop:
             stoping the loop
         stop_mode: str
             Method by which the stop criteria is defined for the ALL
-
             'job_fraction_limit'
+        max_atoms: int
+            Max number of atoms to allow in the unit cell
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
@@ -91,9 +81,9 @@ class ActiveLearningLoop:
             self.DB.write_status(initialized=1)
         else:
             self.batch_no = self.status['last_batch_no']
+
         happy = False
         while not happy:
-            # Wait a while - time.sleep?
             # get completed calculations from WorkFlow
             completed_ids, failed_ids, running_ids = WF.check_submissions()
             t0 = time.time()
@@ -113,26 +103,31 @@ class ActiveLearningLoop:
             self.corrected_batch_size = self.batch_size - len(running_ids)
 
             # get formation energy of completed jobs and save to db
-            self.save_formation_energies(completed_ids)
+            self.save_formation_energies()
 
             happy = self.evaluate()
 
-            # save formation energies + regenerated fingerprints to db
+            # save regenerated fingerprints to db (changes after relaxation)
             self.generate_fingerprints(completed=True)
 
             # retrain ML model
             self.train_ids = self.DB.get_completed_structure_ids()
             self.test_ids = self.DB.get_completed_structure_ids(completed=0)
-            self.train_ml()
 
-            # acqusition -> select batch
+            self.train_ml()
+            all_ids = self.test_ids + self.train_ids
+            all_energies = list(self.energies) + list(self.train_target)
+            all_uncertainties = list(self.uncertainties) + \
+                list(np.zeros_like(self.train_target))
+            self.DB.write_predictions(self.batch_no, all_ids, all_energies, all_uncertainties)
+            # acqusition -> select next batch
             self.acquire_batch()
 
-            self.plot_predictions()
             self.batch_no += 1
             # submit structures with WorkFLow
             WF.submit_id_batch(self.batch_ids)
             self.DB.write_status(last_batch_no=self.batch_no)
+
 
     def test_run(self):
         """Use already completed calculations to test the loop """
@@ -151,7 +146,6 @@ class ActiveLearningLoop:
 
             self.train_ml()
             self.acquire_batch()
-            self.plot_predictions()
             self.batch_no += 1
 
     def initialize(self):
@@ -168,27 +162,17 @@ class ActiveLearningLoop:
 
     def get_frac_of_systems_processed(self):
         """
-        Get the fraction of structures that have been initiated.
+        Get the fraction of structures that have been processed.
 
-        Use this as a simple stop critieria for now
-        Doesn't currently consider whether the "processed" jobs complete,
-        failed, etc
+        Current implementation simply returns the ratio of systems with the
+        relaxed tag equal to 1 over those equal to 0
+
+        Not sure how failed calculations are considered. COMBAK
         """
-        tables = self.DB.get_pandas_tables(
-            tables_list=[
-                'number_key_values',
-                'prototype',
-                ],
-            )
+        num_unrelaxed_systems = self.DB.ase_db.count(relaxed=0)
+        num_relaxed_systems = self.DB.ase_db.count(relaxed=1)
 
-        orig_ids = list(set(tables["prototype"]["id"].tolist()))
-        num_systems = len(orig_ids)
-
-        all_ids = list(set(tables["number_key_values"]["id"].tolist()))
-        new_ids = [i for i in all_ids if i not in orig_ids]
-        num_processed_systems = len(new_ids)
-
-        frac_out = num_processed_systems / num_systems
+        frac_out = num_relaxed_systems / num_unrelaxed_systems
 
         return(frac_out)
 
@@ -226,7 +210,28 @@ class ActiveLearningLoop:
         else:
             raise NotImplementedError  # OQMD interface not implemented
 
-    # def expand_structures(self):
+    def expand_structures(self, chemical_formula=None, max_atoms=None):
+        """Add additional structures to enumerated space, by specifying new chemical
+        formula or allowing more atoms per unit cell"""
+        if chemical_formula:
+            self.chemical_fomulas += [chemical_formula]
+        stoichiometries, elements =\
+            get_stoich_from_formulas(self.chemical_formulas)
+        if max_atoms:
+            self.max_atoms = max_atoms
+
+        for stoichiometry in stoichiometries:
+            npoints = sum([int(s) for s in stoichiometry.split('_')])
+            E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
+                            SG_start=1, SG_end=230, num_type='wyckoff')
+
+            E.store_enumeration(filename=self.db_filename)
+
+        AE = AtomsEnumeration(elements, self.max_atoms)
+        AE.store_atom_enumeration(filename=self.db_filename,
+                                  multithread=True)
+
+        self.generate_fingerprints()
 
     def generate_fingerprints(self, code='catlearn', completed=False):
         self.DB._connect()
@@ -234,22 +239,14 @@ class ActiveLearningLoop:
         atoms_list = []
         output_list = {}
 
-        if completed:
-            ids = self.DB.get_new_fingerprint_ids()
-            for id in ids:
-                row = ase_db.get(id=id)
-                atoms_list += [row.toatoms()]
-                Ef = row.get('Ef', None)
-                if Ef:
-                    output_list[str(id)] = {'Ef': Ef}
-        else:
-            ids = []
-            for row in ase_db.select():
-                ids += [row.id]
-                atoms_list += [row.toatoms()]
-                Ef = row.get('Ef', None)
-                if Ef:
-                    output_list[str(row.id)] = {'Ef': Ef}
+        ids = self.DB.get_new_fingerprint_ids(completed=completed)
+        for id in ids:
+            row = ase_db.get(id=id)
+            atoms_list += [row.toatoms()]
+            Ef = row.get('Ef', None)
+            if Ef:
+                output_list[str(id)] = {'Ef': Ef}
+
         if atoms_list:
             # Kirsten's fingerprinting method
             # fingerprint_data = get_voro_fingerprint(atoms_list)
@@ -266,13 +263,13 @@ class ActiveLearningLoop:
             # FP.clean_features()  # Doesn't work for just 1 atom now, fix
             df_features = FP.fingerprints["voronoi"].values
             fingerprint_data = df_features
-
+            columns, fingerprint_data = get_voro_fingerprint(atoms_list)
         for i, id in enumerate(ids):
             output_data = output_list.get(str(id), None)
             self.DB.save_fingerprint(id, input_data=fingerprint_data[i],
                                      output_data=output_data)
 
-    def save_formation_energies(self, ids):
+    def save_formation_energies(self):
         ase_db = self.DB.ase_db
 
         # Should be updated to only run over new completed ids
@@ -282,73 +279,35 @@ class ActiveLearningLoop:
             # row.formula
             #nA, nB
             references = [0, 0]  # Update
-
             formation_energy = (energy - sum(references)) / row.natoms
 
             ase_db.update(id=row.id, Ef=formation_energy)
 
     def train_ml(self):
-
         train_features, train_target = self.DB.get_fingerprints(
             ids=self.train_ids)
         self.train_target = train_target
         test_features, test_target = self.DB.get_fingerprints(
             ids=self.test_ids)
+        predictions = predict(train_features, self.train_target, test_features)
 
-        predictions = predict(train_features, train_target, test_features)
         self.energies = predictions['prediction']
-        self.uncertainties = predictions['uncertainty']
+        index = [i for i in range(len(self.test_ids))
+                 if np.isfinite(self.energies[i])]
+        self.energies = self.energies[index, 0]
+        self.test_ids = list(np.array(self.test_ids)[index])
+        self.uncertainties = predictions['uncertainty'][index]
 
-    def acquire_batch(self, kappa=1.5):
+    def acquire_batch(self, kappa=1.5, batch_size=None):
+        if not batch_size:
+            batch_size = self.corrected_batch_size
 
         # Simple acquisition function
         values = self.energies - kappa * self.uncertainties
-
         self.acqu = values
-
         indices = np.argsort(values)
         self.batch_ids = list(np.array(self.test_ids)[indices])[
-            :self.corrected_batch_size]
-
-    def plot_predictions(self):
-        all_ids = np.array(self.test_ids + self.train_ids)
-        energies = np.array(list(self.energies) + list(self.train_target))
-        uncertainties = np.array(
-            list(self.uncertainties) + [0 for t in self.train_target])
-
-        acqu = np.array(list(self.acqu) + list(self.train_target))
-
-        idx = np.argsort(energies)
-        all_ids = all_ids[idx]
-
-        p.plot(range(len(idx)), energies[idx], label='prediction')
-        p.plot(range(len(idx)), energies[idx] - uncertainties[idx]/2, 'k--')
-        p.plot(range(len(idx)), energies[idx] + uncertainties[idx]/2, 'k--')
-
-        p.plot(range(len(idx)),
-               acqu[idx], label='acquisition', linestyle='--', color='0.6')
-        p.plot([0, len(idx)], [min(energies), min(energies)],
-               linestyle='--', color='0.4')
-
-        for b, bi in enumerate(self.train_ids):
-            i = list(all_ids).index(bi)
-            if b == 0:
-                p.plot(i, energies[idx][i], 'bo', label='calculated')
-            else:
-                p.plot(i, energies[idx][i], 'bo')
-
-        for b, bi in enumerate(self.batch_ids):
-            i = list(all_ids).index(bi)
-            if b == 0:
-                p.plot(i, energies[idx][i], 'ro', label='next batch')
-            else:
-                p.plot(i, energies[idx][i], 'ro')
-
-        p.xlabel('Structure id')
-        p.ylabel('Energy(eV)')
-        p.legend()
-        p.savefig('prediction_batch_{}.png'.format(self.batch_no))
-        p.clf()  # TEST
+            :batch_size]
 
 
 if __name__ == "__main__":
