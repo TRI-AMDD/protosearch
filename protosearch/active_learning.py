@@ -348,6 +348,7 @@ class ActiveLearningLoop:
         p.ylabel('Energy(eV)')
         p.legend()
         p.savefig('prediction_batch_{}.png'.format(self.batch_no))
+        p.clf()  # TEST
 
 
 if __name__ == "__main__":
