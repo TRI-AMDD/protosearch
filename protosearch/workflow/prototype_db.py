@@ -549,37 +549,58 @@ class PrototypeSQL:
                 'batch_status',
                 'status']
         """
-        tables = to_csv(db_file=self.filename)
-        return(tables)
-    
+        db = sqlite3.connect(self.filename)
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
 
-def get_table(table_name, db):
+        tables_dict = {}
+        for table_name in tables:
+            table_name = table_name[0]
+
+            if tables_list is not None:
+                if table_name in tables_list:
+                    table_i = get_table(table_name, db, write_csv_tables)
+                    tables_dict[table_name] = table_i
+            else:
+                table_i = get_table(table_name, db, write_csv_tables)
+                tables_dict[table_name] = table_i
+
+        cursor.close()
+        db.close()
+
+        # tables = to_csv(db_file=self.filename)
+        return(tables_dict)
+
+
+def get_table(table_name, db, write_csv_tables):
     table = pd.read_sql_query("SELECT * from %s" % table_name, db)
     # tables_dict[table_name] = table
     if write_csv_tables:
         table.to_csv(table_name + '.csv', index_label='index')
     return(table)
 
-def to_csv(db_file=None):
-    db = sqlite3.connect(db_file)
-    cursor = db.cursor()
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table';")
-    tables = cursor.fetchall()
-
-    tables_dict = {}
-    for table_name in tables:
-        table_name = table_name[0]
-
-        if tables_list is not None:
-            if table_name in tables_list:
-                table_i = get_table(table_name, db)
-                tables_dict[table_name] = table_i
-            else:
-                table_i = get_table(table_name, db)
-                tables_dict[table_name] = table_i
-
-    cursor.close()
-    db.close()
-
-    return(tables_dict)
+# def to_csv(db_file=None):
+#     db = sqlite3.connect(db_file)
+#     cursor = db.cursor()
+#     cursor.execute(
+#         "SELECT name FROM sqlite_master WHERE type='table';")
+#     tables = cursor.fetchall()
+#
+#     tables_dict = {}
+#     for table_name in tables:
+#         table_name = table_name[0]
+#
+#         if tables_list is not None:
+#             if table_name in tables_list:
+#                 table_i = get_table(table_name, db)
+#                 tables_dict[table_name] = table_i
+#             else:
+#                 table_i = get_table(table_name, db)
+#                 tables_dict[table_name] = table_i
+#
+#     cursor.close()
+#     db.close()
+#
+#     return(tables_dict)
