@@ -103,7 +103,7 @@ class ActiveLearningLoop:
             self.corrected_batch_size = self.batch_size - len(running_ids)
 
             # get formation energy of completed jobs and save to db
-            self.save_formation_energies(completed_ids)
+            self.save_formation_energies()
 
             happy = self.evaluate()
 
@@ -113,13 +113,13 @@ class ActiveLearningLoop:
             # retrain ML model
             self.train_ids = self.DB.get_completed_structure_ids()
             self.test_ids = self.DB.get_completed_structure_ids(completed=0)
+
             self.train_ml()
             all_ids = self.test_ids + self.train_ids
             all_energies = list(self.energies) + list(self.train_target)
             all_uncertainties = list(self.uncertainties) + \
                 list(np.zeros_like(self.train_target))
             self.DB.write_predictions(self.batch_no, all_ids, all_energies, all_uncertainties)
-
             # acqusition -> select next batch
             self.acquire_batch()
 
@@ -273,13 +273,13 @@ class ActiveLearningLoop:
             # FP.clean_features()  # Doesn't work for just 1 atom now, fix
             df_features = FP.fingerprints["voronoi"].values
             fingerprint_data = df_features
-
+            columns, fingerprint_data = get_voro_fingerprint(atoms_list)
         for i, id in enumerate(ids):
             output_data = output_list.get(str(id), None)
             self.DB.save_fingerprint(id, input_data=fingerprint_data[i],
                                      output_data=output_data)
 
-    def save_formation_energies(self, ids):
+    def save_formation_energies(self):
         ase_db = self.DB.ase_db
 
         # Should be updated to only run over new completed ids
@@ -289,7 +289,6 @@ class ActiveLearningLoop:
             # row.formula
             #nA, nB
             references = [0, 0]  # Update
-
             formation_energy = (energy - sum(references)) / row.natoms
 
             ase_db.update(id=row.id, Ef=formation_energy)
@@ -301,8 +300,13 @@ class ActiveLearningLoop:
         test_features, test_target = self.DB.get_fingerprints(
             ids=self.test_ids)
         predictions = predict(train_features, self.train_target, test_features)
+
         self.energies = predictions['prediction']
-        self.uncertainties = predictions['uncertainty']
+        index = [i for i in range(len(self.test_ids))
+                 if np.isfinite(self.energies[i])]
+        self.energies = self.energies[index, 0]
+        self.test_ids = list(np.array(self.test_ids)[index])
+        self.uncertainties = predictions['uncertainty'][index]
 
     def acquire_batch(self, kappa=1.5, batch_size=None):
         if not batch_size:
@@ -310,9 +314,7 @@ class ActiveLearningLoop:
 
         # Simple acquisition function
         values = self.energies - kappa * self.uncertainties
-
         self.acqu = values
-
         indices = np.argsort(values)
         self.batch_ids = list(np.array(self.test_ids)[indices])[
             :batch_size]

@@ -418,8 +418,8 @@ class PrototypeSQL:
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
-        cur.execute('SELECT count(id) from fingerprint where id={}'.format(id))
-        count = cur.fetchall()[0][0]
+
+        cur.execute('DELETE from fingerprint where id={}'.format(id))
 
         input_data = json.dumps(input_data.tolist())
         columns = ['id', 'input']
@@ -432,17 +432,11 @@ class PrototypeSQL:
 
         values = ['{}'.format(v) if isinstance(v, int) else "'{}'".format(v)
                   for v in values]
-        if count == 0:
-            columns = ','.join(columns)
-            values = ','.join(values)
-            cur.execute(
-                'INSERT INTO fingerprint ({}) VALUES ({})'.format(columns, values))
-        elif count == 1:
-            collist = ['{}={}'.format(columns[i], values[i])
-                       for i in range(1, len(columns))]
-            collist = ','.join(collist)
-            cur.execute(
-                "UPDATE fingerprint set {} where id={}".format(collist, id))
+
+        columns = ','.join(columns)
+        values = ','.join(values)
+        cur.execute(
+            'INSERT INTO fingerprint ({}) VALUES ({})'.format(columns, values))
         con.commit()
         con.close()
 
@@ -474,9 +468,15 @@ class PrototypeSQL:
         self._initialize(con)
         cur = con.cursor()
         if completed:
-            query = 'SELECT id from systems where energy is not null and id not in (SELECT distinct id from fingerprint)'
+            query = \
+                """SELECT id from systems
+                where energy is not null
+                and id not in
+                (SELECT distinct id from fingerprint where output is not null)"""
         else:
-            query = 'SELECT id from systems where id not in (SELECT distinct id from fingerprint)'
+            query = \
+                """SELECT id from systems where
+                id not in (SELECT distinct id from fingerprint)"""
 
         cur.execute(query)
         ids = cur.fetchall()
@@ -493,7 +493,7 @@ class PrototypeSQL:
         cur.execute('DELETE FROM prediction WHERE batch_no={}'.format(batch_no))
         for i, idi in enumerate(ids):
             cur.execute('INSERT INTO prediction VALUES ({}, {}, {}, {})'.format(
-                batch_no, idi, Efs[i], var[i]))
+                batch_no, idi, float(Efs[i]), float(var[i])))
 
         con.commit()
         con.close()

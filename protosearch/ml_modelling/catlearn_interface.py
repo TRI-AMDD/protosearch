@@ -8,15 +8,19 @@ def get_voro_fingerprint(atoms_list):
 
     voro = VoronoiFingerprintGenerator(atoms_list)
     data_frame = voro.generate()
-    matrix = data_frame.values
-
-    finite_numeric_data = clean_infinite(matrix)
-
-    return finite_numeric_data['train']
+    values = data_frame.values
+    columns = data_frame.columns
+    return columns, values
 
 
 def predict(train_features, train_target, test_features):
 
+    finite_numeric_data = clean_infinite(train_features,
+                                         test=test_features,
+                                         targets=train_target)
+    train_features = finite_numeric_data['train']
+    test_features = finite_numeric_data['test']
+    train_target = finite_numeric_data['targets']
     data = clean_variance(train_features, test_features)
     data = normalize(data['train'], data['test'])
     train_features = data['train']

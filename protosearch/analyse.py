@@ -38,13 +38,13 @@ class MetaAnalysis(ActiveLearningLoop):
 
         idx = np.argsort(all_energies)
         energies = all_energies[idx]
-        vars = all_uncertainties[idx]
+        uncer = all_uncertainties[idx]
         ids = [all_ids[i] for i in idx]
         p.plot(range(len(idx)), energies, 'x', label='energies')
         p.plot(range(len(idx)), energies -
-               vars / 2, 'k--', label='confidence')
+               uncer / 2, 'k--', label='confidence')
         p.plot(range(len(idx)), energies +
-               vars / 2, 'k--')
+               uncer / 2, 'k--')
         marker = ['o', '*', '<', 'D', 's', '^']
         for kappa in [0, 1, 2, 3, 4, 5]:
             self.acquire_batch(kappa=kappa, batch_size=10)
@@ -73,13 +73,13 @@ class MetaAnalysis(ActiveLearningLoop):
             p.figure()
             idx = np.argsort(prediction['energies'])
             energies = prediction['energies'][idx]
-            vars = prediction['vars'][idx]
+            unc = prediction['vars'][idx]
             ids = [prediction['ids'][i] for i in idx]
             p.plot(range(len(idx)), energies, 'x', label='energies')
-            p.plot(range(len(idx)), energies - vars / 2, 'k--', label='confidence')
-            p.plot(range(len(idx)), energies + vars / 2, 'k--')
+            p.plot(range(len(idx)), energies - unc / 2, 'k--', label='confidence')
+            p.plot(range(len(idx)), energies + unc / 2, 'k--')
             
-            idx1 = np.where(vars==0)[0]
+            idx1 = np.where(unc==0)[0]
             ids1 = [ids[i] for i in idx1]
             new_ids = [i for i in ids1 if not i in calculated]
             old_ids_idx = [ids.index(i) for i in calculated if i in ids]
@@ -124,7 +124,7 @@ class MetaAnalysis(ActiveLearningLoop):
               .format(count_changed, count_all))
 
 if __name__ == "__main__":
-    MA = MetaAnalysis(chemical_formulas=['Cu2O'], max_atoms=10)
+    MA = MetaAnalysis(chemical_formulas=['Na2O'], max_atoms=10)
     MA.plot_predictions()
     MA.plot_acquisition()
     MA.test_prototype_change()
