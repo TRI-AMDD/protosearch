@@ -128,22 +128,21 @@ class CellParameters:
                                            optimize_wyckoffs)
             if not cell_parameters:
                 return None
-            niter = 0
-            while covalent_density < 0.1 and niter < 5:
-                print('Density is very low, running additional optimization')
-                cell_parameters, covalent_density =\
-                    self.get_lattice_constants(cell_parameters,
-                                               optimize_wyckoffs)
-                niter += 1
+
+            if covalent_density < 0.05:
+                print('Warning: very low density. Omitting this structure')
+                return None
+
         cell_parameters.update(master_parameters)
         atoms = self.get_atoms(fix_parameters=cell_parameters)
-        if self.check_prototype(atoms):
-            out = cell_parameters
+        if not atoms:
+            return None
+        elif self.check_prototype(atoms):
+            return cell_parameters
         else:
             if self.verbose:
                 print("Structure reduced to another spacegroup")
-            out = None
-        return out
+            return None
 
     def set_lattice_dof(self):
         """Set degrees of freedom for lattice constants and angles
@@ -251,11 +250,14 @@ class CellParameters:
                 print('Symmetry reduced from spacegroup {} to {}'.format(
                     self.spacegroup, sg2))
             return False
-        if not wyckoff_species2 == wyckoff_species2:
-            if self.verbose:
-                print('Wyckoffs changes from {} to {}'.format(
-                    self.wyckoffs, w2))
-            return False
+
+        # This check doesn't work since the wyckoffs can change
+        # due to a flip of the axis (if c < a for example without  changing the symmetry).
+        # if not wyckoff_species2 == wyckoff_species:
+        #    if self.verbose:
+        #        print('Wyckoffs changed from {} to {}'.format(
+        #            self.wyckoffs, w2))
+        #    return False
 
         return True
 
@@ -451,9 +453,11 @@ class CellParameters:
                         if count_added == 1:
                             continue
             multiplicity += [count_added] * count_added
-
-            self.assign_wyckoff_symmetries(w, sorted_atoms,
-                                           count_added)
+            try:
+                self.assign_wyckoff_symmetries(w, sorted_atoms,
+                                               count_added)
+            except:
+                return None
 
         self.atoms_wyckoffs = atoms_wyckoffs
         self.multiplicity = multiplicity
@@ -517,6 +521,7 @@ class CellParameters:
             if np.all(np.isclose(rp, rp0)):
                 coordinate = rp
                 break
+
         atoms_test = Atoms(cell=atoms.cell, pbc=True)
         for w_sym in wyckoff_array:
             # r_i = r_0 * M^T + c_i
@@ -536,6 +541,7 @@ class CellParameters:
                                       cell=atoms.cell, pbc=True)
 
         d = np.nonzero(np.isclose(distances, 0, atol=0.001))
+
         d_map = d[1][d[0]]
         sym_indices = [count_atoms0 + i for i in range(index)]
 
@@ -664,6 +670,8 @@ class CellParameters:
             atoms = self.get_sorted_atoms(fix_parameters)
         else:
             atoms = self.get_atoms(fix_parameters)
+        if not atoms:
+            return None, None
 
         cell = atoms.cell
 
@@ -720,10 +728,6 @@ class CellParameters:
 
         if view_images:
             ase.visualize.view(images)
-
-        if not self.check_prototype(atoms):
-            print("Symmetry changed during optimization")
-            return None, None
 
         new_parameters = self.read_cell_parameters(atoms)
         fix_parameters.update(new_parameters)

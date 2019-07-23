@@ -40,6 +40,7 @@ class DummyWorkflow(PrototypeSQL):
         self.collected = False
 
         # Will be dotted with fingerprints to produce dummy 'energy' output
+        np.random.seed(0)
         self.random_vect = np.random.rand(1, 1000)[0]
         #__|
 
