@@ -162,27 +162,17 @@ class ActiveLearningLoop:
 
     def get_frac_of_systems_processed(self):
         """
-        Get the fraction of structures that have been initiated.
+        Get the fraction of structures that have been processed.
 
-        Use this as a simple stop critieria for now
-        Doesn't currently consider whether the "processed" jobs complete,
-        failed, etc
+        Current implementation simply returns the ratio of systems with the
+        relaxed tag equal to 1 over those equal to 0
+
+        Not sure how failed calculations are considered. COMBAK
         """
-        tables = self.DB.get_pandas_tables(
-            tables_list=[
-                'number_key_values',
-                'prototype',
-                ],
-            )
+        num_unrelaxed_systems = self.DB.ase_db.count(relaxed=0)
+        num_relaxed_systems = self.DB.ase_db.count(relaxed=1)
 
-        orig_ids = list(set(tables["prototype"]["id"].tolist()))
-        num_systems = len(orig_ids)
-
-        all_ids = list(set(tables["number_key_values"]["id"].tolist()))
-        new_ids = [i for i in all_ids if i not in orig_ids]
-        num_processed_systems = len(new_ids)
-
-        frac_out = num_processed_systems / num_systems
+        frac_out = num_relaxed_systems / num_unrelaxed_systems
 
         return(frac_out)
 
