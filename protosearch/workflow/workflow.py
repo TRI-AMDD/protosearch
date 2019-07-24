@@ -336,6 +336,17 @@ class Workflow(PrototypeSQL):
         ids = self.check_submissions()
 
 
+class AWSWorkflow(Workflow):
+    """
+    """
+
+    def __init__(self,
+        *args, **kwargs,
+        ):
+
+        print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
+
+        super().__init__(*args, **kwargs)
 def clean_key_value_pairs(key_value_pairs):
     for key, value in key_value_pairs.items():
         if isinstance(value, list):
