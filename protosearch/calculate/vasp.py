@@ -34,12 +34,12 @@ class VaspModel:
                                  U_luj.get(symbol,
                                            {'L': 0, 'U': 0, 'J': 0})})
 
+        self.sorted_parameters = VaspStandards.sorted_calc_parameters
+        self.fixed_parameters = VaspStandards.fixed_parameters
+        self.all_parameters = self.sorted_parameters + self.fixed_parameters
         if ldau_luj:
             self.calc_parameters.update({'ldau_luj': ldau_luj})
-            self.all_parameters = VaspStandards.sorted_calc_parameters + \
-                VaspStandards.u_parameters
-        else:
-            self.all_parameters = VaspStandards.sorted_calc_parameters
+            self.all_parameters += VaspStandards.u_parameters
 
         self.initial_magmoms = {}
         for symbol in [s for s in symbols if s in CommonCalc.magnetic_trickers]:
@@ -56,9 +56,12 @@ class VaspModel:
         self.calc_values = []
         for param in self.all_parameters:
             self.calc_values += [self.calc_parameters[param]]
+        self.sorted_calc_values = []
+        for param in self.sorted_parameters:
+            self.sorted_calc_values += [self.calc_parameters[param]]
 
     def get_parameters(self):
-        return self.all_parameters.copy(), self.calc_values.copy()
+        return self.sorted_parameters.copy(), self.sorted_calc_values.copy()
 
     def get_parameter_dict(self):
         return self.calc_parameters
@@ -86,10 +89,14 @@ class VaspModel:
         for i, param in enumerate(self.all_parameters):
             factor = VaspStandards.calc_decimal_parameters.get(param, None)
             value = self.calc_values[i]
+            if param in self.fixed_parameters:
+                value_i = value
+            else:
+                value_i = '#{}'.format(i + 1)
             if factor:
-                modelstr += '{} = #{} * {}\n'.format(param, i+1, factor)
+                modelstr += '{} = {} * {}\n'.format(param, value_i, factor)
             elif isinstance(value, str):
-                modelstr += "{} = '#{}'\n".format(param, i+1)
+                modelstr += "{} = '{}'\n".format(param, value_i)
             elif isinstance(value, dict):
                 modelstr += '{}='.format(param)
                 modelstr += '{'
@@ -103,7 +110,7 @@ class VaspModel:
                 modelstr += '}\n'
 
             else:
-                modelstr += '{} = #{}\n'.format(param, i+1)
+                modelstr += '{} = {}\n'.format(param, value_i)
 
         modelstr = self.add_calc(modelstr)
 
@@ -222,7 +229,7 @@ path = sys.path[0]
 
 atoms = read('OUTCAR')
 
-for file in ['INCAR', 'OUTCAR']:
+for file in ['INCAR', 'OUTCAR', 'err', 'log']:
     os.rename('{}'.format(file), '{}.relax'.format(file))
 
 calc.set(nsw=0)
