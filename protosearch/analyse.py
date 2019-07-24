@@ -7,12 +7,11 @@ from protosearch.active_learning import ActiveLearningLoop
 class MetaAnalysis(ActiveLearningLoop):
 
     def __init__(self,
-                 chemical_formulas,
-                 max_atoms):
+        *args, **kwargs,
+        ):
         self.energies = None
-        
-        super().__init__(chemical_formulas=chemical_formulas,
-                         max_atoms=max_atoms)
+
+        super().__init__(*args, **kwargs)
 
 
     def plot_fingerprint_variation(self):
@@ -57,7 +56,7 @@ class MetaAnalysis(ActiveLearningLoop):
     def plot_predictions(self):
         predictions = self.DB.get_predictions()
         calculated = []
-        if self.energies is None: 
+        if self.energies is None:
             self.get_new_prediction()
         all_ids = self.test_ids + self.train_ids
         all_energies = np.array(list(self.energies) + list(self.train_target))
@@ -68,7 +67,7 @@ class MetaAnalysis(ActiveLearningLoop):
                       'ids': all_ids,
                       'batch_no': 'next'}
         predictions += [prediction]
-        
+
         for prediction in predictions:
             p.figure()
             idx = np.argsort(prediction['energies'])
@@ -78,13 +77,13 @@ class MetaAnalysis(ActiveLearningLoop):
             p.plot(range(len(idx)), energies, 'x', label='energies')
             p.plot(range(len(idx)), energies - unc / 2, 'k--', label='confidence')
             p.plot(range(len(idx)), energies + unc / 2, 'k--')
-            
+
             idx1 = np.where(unc==0)[0]
             ids1 = [ids[i] for i in idx1]
             new_ids = [i for i in ids1 if not i in calculated]
             old_ids_idx = [ids.index(i) for i in calculated if i in ids]
             calculated += new_ids
-            
+
             new_ids_idx = [ids.index(i) for i in new_ids]
 
             if prediction['batch_no'] == 'next':
@@ -92,15 +91,15 @@ class MetaAnalysis(ActiveLearningLoop):
                 new_ids_idx = [ids.index(i) for i in self.batch_ids]
                 p.plot(new_ids_idx, energies[new_ids_idx], 'yo', label='previous batches')
                 p.plot(new_ids_idx, energies[new_ids_idx], 'o', label='next batch')
-                
+
             else:
                 p.plot(old_ids_idx, energies[old_ids_idx], 'yo', label='previous batches')
                 p.plot(new_ids_idx, energies[new_ids_idx], 'ro', label='latest batch')
-                
+
 
             p.xlabel('Structure id')
             p.title('Predictions for batch {}'.format(prediction['batch_no']))
-            
+
             p.ylabel('Energy(eV)')
             p.legend()
 
@@ -128,5 +127,3 @@ if __name__ == "__main__":
     MA.plot_predictions()
     MA.plot_acquisition()
     MA.test_prototype_change()
-
-        

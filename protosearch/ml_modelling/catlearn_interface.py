@@ -28,9 +28,14 @@ def predict(train_features, train_target, test_features):
 
     kernel = [{'type': 'gaussian', 'width': 3, 'scaling': 1.}]
 
-    GP = GaussianProcess(train_fp=train_features, train_target=train_target,
-                         kernel_list=kernel, regularization=5e-2,
-                         optimize_hyperparameters=True, scale_data=True)
+    GP = GaussianProcess(
+        train_fp=train_features,
+        train_target=train_target,
+        kernel_list=kernel,
+        regularization=3e-2,
+        optimize_hyperparameters=True,
+        scale_data=True, # True is breaking code sometimes
+        )
 
     pred = GP.predict(test_fp=test_features, uncertainty=True)
 

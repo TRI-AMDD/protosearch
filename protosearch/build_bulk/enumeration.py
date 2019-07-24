@@ -23,7 +23,7 @@ class Enumeration():
         Parameters
 
         stoichiometry: str
-            Ratio bewteen elements separated by '_'. 
+            Ratio bewteen elements separated by '_'.
             For example: '1_2' or '1_2_3'
 
         num_start: int
@@ -34,7 +34,7 @@ class Enumeration():
            minimum spacegroup number
         SG_end: int
            maximum spacegroup number
-        num_type: str 
+        num_type: str
             'atom' or 'wyckoff'
         """
 
@@ -89,7 +89,7 @@ class Enumeration():
                     len(enumerations), SG))
             except:
                 print('Found 0 prototypes for spacegroup={}'.format(SG))
-                      
+
             with PrototypeSQL(filename=filename) as DB:
                 for entry in enumerations:
                     DB.write_prototype(entry=entry)

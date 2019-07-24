@@ -35,7 +35,6 @@ class FingerPrint:
         that must be taken into account
         * Incorporate feature engineering
         * TEMP
-
     """
 
     #| - FingerPrint **********************************************************
@@ -110,10 +109,12 @@ class FingerPrint:
         #| - input_index
 
         if type(input_index) is list:
-            self.__input_index__ = tuple(input_index)
+            # self.__input_index__ = tuple(input_index)
+            self.__input_index__ = input_index
 
         elif type(input_index) is set:
             pass
+
         else:
             raise TypeError("input_index must be given as a <list> or <set>")
 
@@ -145,8 +146,13 @@ class FingerPrint:
             feature_class_name_i = feature_methods_dict[meth_i]
             class_i = getattr(sys.modules[__name__], feature_class_name_i)
 
-            # TEMP
-            input_array = input_data.loc[:, input_index].tolist()
+            # COMBAK There were some issues caused here by the .loc method
+            # returning either a pandas.DataFrame or a pandas.series
+            # input_array = input_data.loc[:, input_index].tolist()
+            input_array = input_data.loc[:, input_index].iloc[:, 0].tolist()
+
+            self.temp_var = input_array
+
             instance_i = class_i(input_array)
 
             out_dict[meth_i] = instance_i
@@ -280,7 +286,6 @@ class FingerPrint:
             assert is_pd_df is True, err_mess_i
             #__|
 
-
             features_i = features_i.set_index(
                 input_data.index,
                 # np.array(rand_ids),
@@ -301,6 +306,8 @@ class FingerPrint:
 
 
     def join_input_to_fingerprints(self):
+        """Concancotate
+        """
         #| - join_input_to_fingerprints
         input_data = self.input_data
         fingerprints = self.fingerprints
@@ -308,20 +315,26 @@ class FingerPrint:
         df_out = pd.merge(input_data, fingerprints,
             left_index=True,
             right_index=True,
-            indicator=True,
+            indicator=True,  # This was breaking the method for some reason
             )
 
         # TODO
         #| - Check that operation was succesful
-        print(len(input_data))
-        print(len(fingerprints))
+        # Merge command shouldn't be dropping any rows
 
-        print(len(df_out))
+        # print(len(input_data))
+        # print(len(fingerprints))
+        # print(len(df_out))
+
+        if len(input_data) != len(fingerprints): print("MISTAKE iasdjfisj")
+        if len(input_data) != len(df_out): print("MISTAKE iasdjfisj2")
+        if len(fingerprints) != len(df_out): print("MISTAKE iasdjfisj3")
         #__|
 
-        # return(input_data, fingerprints)
+        self.fingerprints = df_out
 
-        return(df_out)
+        # return(input_data, fingerprints)
+        # return(df_out)
         #__|
 
     #__| **********************************************************************

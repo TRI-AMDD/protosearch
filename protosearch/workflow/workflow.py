@@ -1,17 +1,20 @@
 import os
 import json
 import subprocess
+import time
+import numpy as np
+import copy
 import ase
 from ase.io import read
-import bulk_enumerator as be
 
-from protosearch.utils import get_basepath
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.build_bulk.classification import get_classification
+
+from protosearch.utils import get_basepath
 from protosearch.utils.standards import VaspStandards
+from protosearch.calculate.dummy_calc import DummyCalc
 from protosearch.calculate.submit import TriSubmit
 from .prototype_db import PrototypeSQL
-
 
 class Workflow(PrototypeSQL):
     """Submits calculations with TriSubmit, and tracks the calculations
@@ -68,7 +71,7 @@ class Workflow(PrototypeSQL):
                            'wyckoffs': json.dumps(prototype['wyckoffs']),
                            'species': json.dumps(prototype['species'])}
         if batch_no:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.write_submission(key_value_pairs)
 
@@ -112,7 +115,7 @@ class Workflow(PrototypeSQL):
                            'species': json.dumps(BB.species)}
 
         if batch_no:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.write_submission(key_value_pairs)
 
@@ -139,7 +142,7 @@ class Workflow(PrototypeSQL):
         for calc_id in calc_ids:
             self.submit_id(calc_id, ncpus, batch_no, calc_parameters)
 
-    def submit_id(self, calc_id,  ncpus=1, batch_no=None, calc_parameters=None):
+    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None):
         """
         Submit an atomic structure by id
         """
@@ -164,7 +167,7 @@ class Workflow(PrototypeSQL):
                            'submitted': 1}
 
         if batch_no is not None:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.ase_db.update(int(calc_id), **key_value_pairs)
 
@@ -238,13 +241,14 @@ class Workflow(PrototypeSQL):
 
         return status, calcid
 
-    def save_completed_calculation(self, atoms, path, runpath, calcid):
+    def save_completed_calculation(self, atoms, path, runpath, calcid,
+        read_params=True,
+        ):
 
         self.ase_db.update(id=calcid,
                            completed=1)
 
         batch_no = self.ase_db.get(id=calcid).get('batch', None)
-        param_dict = params2dict(runpath + '/param')
         prototype, cell_parameters = get_classification(atoms)
 
         key_value_pairs = {'relaxed': 1,
@@ -258,11 +262,15 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs.update(prototype)
         key_value_pairs.update(cell_parameters)
-        key_value_pairs.update(param_dict)
 
-        key_value_pairs = clean_key_value_pairs(key_value_pairs)
+        param_dict = {}
+        if read_params:
+            param_dict = params2dict(runpath + '/param')
+            key_value_pairs.update(param_dict)
 
         atoms = set_calculator_info(atoms, param_dict)
+
+        key_value_pairs = clean_key_value_pairs(key_value_pairs)
 
         newcalcid = self.ase_db.write(atoms, key_value_pairs)
         self.ase_db.update(id=calcid,
@@ -299,6 +307,7 @@ class Workflow(PrototypeSQL):
         self._initialize(con)
 
         for d in self.ase_db.select(completed=-1):
+            # 'error' is undefined
             resubmit, handle = vasp_errors(error)
             if not resubmit:
                 print('Job errored: {}'.format(handle))
@@ -328,6 +337,113 @@ class Workflow(PrototypeSQL):
 
     def get_completed_batch(self):
         ids = self.check_submissions()
+
+
+class AWSWorkflow(Workflow):
+    """
+    """
+
+    def __init__(self,
+        *args, **kwargs,
+        ):
+
+        print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
+
+        super().__init__(*args, **kwargs)
+
+
+class DummyWorkflow(Workflow):
+    """
+    """
+
+    def __init__(self,
+        job_complete_time=0.6,
+        *args, **kwargs,
+        ):
+        print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
+
+        super().__init__(*args, **kwargs)
+
+        self.job_complete_time = job_complete_time
+
+        # Pretend that instance is always in "collected" state
+        self.collected = True
+
+        # Will be dotted with fingerprints to produce dummy 'energy' output
+        np.random.seed(0)
+        self.random_vect = np.random.rand(1, 1000)[0]
+
+    def recollect(self):
+        # print("Not actually calling trisync here")
+        return(None)
+
+    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None):
+        """
+        Submit an atomic structure by id
+        """
+        row = self.ase_db.get(id=int(calc_id))
+        # atoms = row.toatoms()
+
+        formula = row.formula
+        p_name = row.p_name
+
+        if self.is_calculated(formula=formula, p_name=p_name):
+            return
+
+        key_value_pairs = {
+            "path": "TEMP",
+            "submit_time": time.time(),
+            "submitted": 1,
+            }
+
+        if batch_no is not None:
+            key_value_pairs.update({'batch': batch_no})
+
+        self.ase_db.update(int(calc_id), **key_value_pairs)
+
+    def check_job_status(self, path, calcid):
+        """
+        """
+        d = self.ase_db.get(id=calcid)
+
+        status = 'running'
+        atoms = d.toatoms()
+        calcid = d.id
+
+        time_submit = d.submit_time
+        time_i = time.time()
+        time_elapsed = time_i - time_submit
+
+        if time_elapsed > self.job_complete_time:
+            # Job completed
+            status = 'completed'
+
+            train_features, train_target = self.get_fingerprints([calcid])
+            shape = train_features.shape
+            random_vect = self.random_vect[0:shape[-1]]
+            dummy_energy = random_vect.dot(train_features[0]) / 1000
+
+            atoms = copy.deepcopy(atoms)
+            calc = DummyCalc(energy_zero=dummy_energy)
+            atoms.set_calculator(calc)
+
+            path = d.path
+            runpath = "TEMP"
+
+            new_calcid = self.save_completed_calculation(
+                atoms, path, runpath, calcid,
+                read_params=False,
+                # atoms, calcid,
+                )
+            calcid = new_calcid
+
+        else:
+            # Job not completed
+            status = 'running'
+
+
+        return(status, calcid)
+
 
 
 def clean_key_value_pairs(key_value_pairs):

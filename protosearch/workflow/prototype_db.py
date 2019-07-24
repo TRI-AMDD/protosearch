@@ -3,6 +3,7 @@ import sys
 import subprocess
 import json
 import numpy as np
+import pandas as pd
 import ase.db
 from ase.db.sqlite import SQLite3Database
 from ase.io import read
@@ -65,7 +66,7 @@ init_commands = [
     most_stable_id int
     );""",
 
-    """INSERT into status 
+    """INSERT into status
     (id, enumerated, fingerprinted, initialized, n_completed, n_errored)
     VALUES
     (0, 0, 0, 0, 0, 0);"""
@@ -258,7 +259,7 @@ class PrototypeSQL:
         cur = con.cursor()
 
         cur.execute(
-            """INSERT into enumeration (stoichiometry, spacegroup, number, num_type) 
+            """INSERT into enumeration (stoichiometry, spacegroup, number, num_type)
             VALUES ('{}', {}, {}, '{}')""".
             format(stoichiometry, spacegroup, number, num_type)
         )
@@ -440,6 +441,9 @@ class PrototypeSQL:
         con.close()
 
     def get_fingerprints(self, ids):
+        """
+        NOTE: Does this return the output in the same order as they're inputed
+        """
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
@@ -518,3 +522,85 @@ class PrototypeSQL:
                              'energies': energies,
                              'vars': var}]
         return predictions
+
+    def get_pandas_tables(self,
+        write_csv_tables=False,
+        tables_list=None):
+        """Convert SQL tables to Pandas dataframes.
+
+        Parameters:
+        ----------
+        write_csv_tables: Bool
+            Write data tables to .csv files to current working dir
+        tables_list: list or None
+            List of table names to retrieve if you don't want all of them
+            tables_list = [
+                'systems',
+                'sqlite_sequence',
+                'species',
+                'keys',
+                'text_key_values',
+                'number_key_values',
+                'information',
+                'prototype',
+                'fingerprint',
+                'prediction',
+                'enumeration',
+                'batch_status',
+                'status']
+        """
+        db = sqlite3.connect(self.filename)
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+
+        tables_dict = {}
+        for table_name in tables:
+            table_name = table_name[0]
+
+            if tables_list is not None:
+                if table_name in tables_list:
+                    table_i = get_table(table_name, db, write_csv_tables)
+                    tables_dict[table_name] = table_i
+            else:
+                table_i = get_table(table_name, db, write_csv_tables)
+                tables_dict[table_name] = table_i
+
+        cursor.close()
+        db.close()
+
+        # tables = to_csv(db_file=self.filename)
+        return(tables_dict)
+
+
+def get_table(table_name, db, write_csv_tables):
+    table = pd.read_sql_query("SELECT * from %s" % table_name, db)
+    # tables_dict[table_name] = table
+    if write_csv_tables:
+        table.to_csv(table_name + '.csv', index_label='index')
+    return(table)
+
+# def to_csv(db_file=None):
+#     db = sqlite3.connect(db_file)
+#     cursor = db.cursor()
+#     cursor.execute(
+#         "SELECT name FROM sqlite_master WHERE type='table';")
+#     tables = cursor.fetchall()
+#
+#     tables_dict = {}
+#     for table_name in tables:
+#         table_name = table_name[0]
+#
+#         if tables_list is not None:
+#             if table_name in tables_list:
+#                 table_i = get_table(table_name, db)
+#                 tables_dict[table_name] = table_i
+#             else:
+#                 table_i = get_table(table_name, db)
+#                 tables_dict[table_name] = table_i
+#
+#     cursor.close()
+#     db.close()
+#
+#     return(tables_dict)
