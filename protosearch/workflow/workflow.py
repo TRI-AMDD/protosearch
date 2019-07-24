@@ -238,13 +238,14 @@ class Workflow(PrototypeSQL):
 
         return status, calcid
 
-    def save_completed_calculation(self, atoms, path, runpath, calcid):
+    def save_completed_calculation(self, atoms, path, runpath, calcid,
+        read_params=True,
+        ):
 
         self.ase_db.update(id=calcid,
                            completed=1)
 
         batch_no = self.ase_db.get(id=calcid).get('batch', None)
-        param_dict = params2dict(runpath + '/param')
         prototype, cell_parameters = get_classification(atoms)
 
         key_value_pairs = {'relaxed': 1,
@@ -258,11 +259,15 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs.update(prototype)
         key_value_pairs.update(cell_parameters)
-        key_value_pairs.update(param_dict)
 
-        key_value_pairs = clean_key_value_pairs(key_value_pairs)
+        param_dict = {}
+        if read_params:
+            param_dict = params2dict(runpath + '/param')
+            key_value_pairs.update(param_dict)
 
         atoms = set_calculator_info(atoms, param_dict)
+
+        key_value_pairs = clean_key_value_pairs(key_value_pairs)
 
         newcalcid = self.ase_db.write(atoms, key_value_pairs)
         self.ase_db.update(id=calcid,
