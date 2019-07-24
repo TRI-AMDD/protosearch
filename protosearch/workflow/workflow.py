@@ -6,12 +6,15 @@ import numpy as np
 import copy
 import ase
 from ase.io import read
-import bulk_enumerator as be
+# import bulk_enumerator as be
 
-from protosearch.utils import get_basepath
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.build_bulk.classification import get_classification
+
+from protosearch.utils import get_basepath
 from protosearch.utils.standards import VaspStandards
+from protosearch.utils.dummy_calc import DummyCalc
+
 from protosearch.calculate.submit import TriSubmit
 from .prototype_db import PrototypeSQL
 
