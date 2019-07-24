@@ -1,26 +1,34 @@
-import sys
 import time
 import numpy as np
-import pylab as p
+import pandas as pd
 
-from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration, get_stoich_from_formulas
+from protosearch.build_bulk.enumeration import (
+    Enumeration, AtomsEnumeration, get_stoich_from_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
-from protosearch.workflow.workflow import Workflow
-from protosearch.ml_modelling.catlearn_interface import get_voro_fingerprint, predict
+from protosearch.ml_modelling.catlearn_interface import (
+    get_voro_fingerprint, predict)
+from protosearch.ml_modelling.fingerprint import FingerPrint
 
 
 class ActiveLearningLoop:
 
     def __init__(self,
                  chemical_formulas,
+                 Workflow=None,
                  source='prototypes',
                  batch_size=10,
-                 max_atoms=None):
+                 max_atoms=None,
+                 check_frequency=60.,
+                 frac_jobs_limit=0.7,
+                 stop_mode="job_fraction_limit",
+                 ):
         """
         Module to run active learning loop
 
         Parameters:
         ----------
+        Workflow:
+            Workflow class to use
         chemical_formulas: list of strings
             chemical formulas to investigate, such as:
             ['IrO2', 'IrO3']
@@ -31,15 +39,28 @@ class ActiveLearningLoop:
             'prototypes': Enumerate all prototypes.
         batch_size: int
             number of DFT jobs to submit simultaneously.
+        check_frequency: float
+            Frequency in (s) that the AL checks on the job state
+        frac_jobs_limit: float
+            Upper limit on the fraction of of jobs to be processed before
+            stoping the loop
+        stop_mode: str
+            Method by which the stop criteria is defined for the ALL
+            'job_fraction_limit'
         max_atoms: int
             Max number of atoms to allow in the unit cell
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
         self.chemical_formulas = chemical_formulas
+        self.Workflow = Workflow
         self.source = source
         self.batch_size = batch_size
         self.max_atoms = max_atoms
+        self.check_frequency = check_frequency
+        self.frac_jobs_limit = frac_jobs_limit
+        self.stop_mode = stop_mode
+
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.DB = PrototypeSQL(self.db_filename)
         self.DB.write_status(
@@ -48,7 +69,7 @@ class ActiveLearningLoop:
     def run(self):
         """Run actice learning loop"""
 
-        WF = Workflow(db_filename=self.db_filename)
+        WF = self.Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
 
         if not self.status['initialized']:
@@ -73,7 +94,7 @@ class ActiveLearningLoop:
                 t = time.time() - t0
                 print('{} job(s) completed in {:.2f} min'.format(len(completed_ids),
                                                                  t / 60))
-                time.sleep(60)
+                time.sleep(self.check_frequency)
 
             self.DB.write_job_status()
 
@@ -107,9 +128,9 @@ class ActiveLearningLoop:
             WF.submit_id_batch(self.batch_ids)
             self.DB.write_status(last_batch_no=self.batch_no)
 
-    def test_run(self, run_new=False):
-        """Use already completed calculations to test the loop"""
-        WF = Workflow(db_filename=self.db_filename)
+    def test_run(self):
+        """Use already completed calculations to test the loop """
+        WF = self.Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
         self.corrected_batch_size = self.batch_size
 
@@ -154,9 +175,33 @@ class ActiveLearningLoop:
 
         self.batch_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
 
+    def get_frac_of_systems_processed(self):
+        """
+        Get the fraction of structures that have been processed.
+
+        Current implementation simply returns the ratio of systems with the
+        relaxed tag equal to 1 over those equal to 0
+
+        Not sure how failed calculations are considered. COMBAK
+        """
+        num_unrelaxed_systems = self.DB.ase_db.count(relaxed=0)
+        num_relaxed_systems = self.DB.ase_db.count(relaxed=1)
+
+        frac_out = num_relaxed_systems / num_unrelaxed_systems
+
+        return(frac_out)
+
     def evaluate(self):
         happy = False
-        # function to determine when the prediction ends
+
+        # Upper limit on Systems/Jobs processed
+        if self.stop_mode == "job_fraction_limit":
+            frac_i = self.get_frac_of_systems_processed()
+            print("fraction_i: ", frac_i)
+            if frac_i >= self.frac_jobs_limit:
+                print("HAPPY! Upper fraction of jobs procesed limit reached")
+                happy = True
+
         return happy
 
     def enumerate_structures(self):
@@ -170,6 +215,7 @@ class ActiveLearningLoop:
                 npoints = sum([int(s) for s in stoichiometry.split('_')])
                 E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
                                 SG_start=1, SG_end=230, num_type='wyckoff')
+                                # SG_start=5, SG_end=5, num_type='wyckoff')  # For testing
 
                 E.store_enumeration(filename=self.db_filename)
 
@@ -217,6 +263,21 @@ class ActiveLearningLoop:
                 output_list[str(id)] = {'Ef': Ef}
 
         if atoms_list:
+            # Kirsten's fingerprinting method
+            # fingerprint_data = get_voro_fingerprint(atoms_list)
+
+            # NOTE TODO In principle everytime a fingerprint is generated every
+            # other fingerprint should be updated (assuming we're
+            # standardizing the data, which we should)
+            df_atoms = pd.DataFrame(atoms_list)
+            df_atoms.columns = ["atoms"]
+            FP = FingerPrint(**{
+                "feature_methods": ["voronoi"], "input_data": df_atoms,
+                "input_index": ["atoms"]})
+            FP.generate_fingerprints()
+            # FP.clean_features()  # Doesn't work for just 1 atom now, fix
+            df_features = FP.fingerprints["voronoi"].values
+            fingerprint_data = df_features
             columns, fingerprint_data = get_voro_fingerprint(atoms_list)
         for i, id in enumerate(ids):
             output_data = output_list.get(str(id), None)
@@ -269,5 +330,17 @@ class ActiveLearningLoop:
 
 
 if __name__ == "__main__":
-    ALL = ActiveLearningLoop(chemical_formulas=['Cu2O'], max_atoms=10)
+    from protosearch.workflow.workflow_dummy import DummyWorkflow
+    from protosearch.workflow.workflow import Workflow
+
+    ALL = ActiveLearningLoop(
+        chemical_formulas=['Cu2O'],
+        max_atoms=10,
+        # Workflow=DummyWorkflow,
+        Workflow=Workflow,
+        batch_size=1,
+        check_frequency=0.6,
+        frac_jobs_limit=0.4,
+        stop_mode="job_fraction_limit",
+        )
     ALL.run()

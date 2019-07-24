@@ -8,14 +8,11 @@ from protosearch.active_learning import ActiveLearningLoop
 class MetaAnalysis(ActiveLearningLoop):
 
     def __init__(self,
-                 chemical_formulas,
-                 max_atoms,
-                 batch_size=10):
+        *args, **kwargs,
+        ):
         self.energies = None
 
-        super().__init__(chemical_formulas=chemical_formulas,
-                         batch_size=batch_size,
-                         max_atoms=max_atoms)
+        super().__init__(*args, **kwargs)
 
     def plot_fingerprint_variation(self):
         test_ids = self.DB.get_completed_structure_ids(completed=0)
