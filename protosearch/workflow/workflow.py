@@ -1,6 +1,9 @@
 import os
 import json
 import subprocess
+import time
+import numpy as np
+import copy
 import ase
 from ase.io import read
 import bulk_enumerator as be
@@ -347,6 +350,110 @@ class AWSWorkflow(Workflow):
         print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
 
         super().__init__(*args, **kwargs)
+
+
+class DummyWorkflow(Workflow):
+    """
+    """
+
+    #| - DummyWorkflow
+    def __init__(self,
+        job_complete_time=0.6,
+        *args, **kwargs,
+        ):
+        #| - __init__
+        print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
+
+        super().__init__(*args, **kwargs)
+
+        self.job_complete_time = job_complete_time
+
+        # Pretend that instance is always in "collected" state
+        self.collected = True
+
+        # Will be dotted with fingerprints to produce dummy 'energy' output
+        np.random.seed(0)
+        self.random_vect = np.random.rand(1, 1000)[0]
+        #__|
+
+    def recollect(self):
+        # print("Not actually calling trisync here")
+        return(None)
+
+    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None):
+        """
+        Submit an atomic structure by id
+        """
+        #| - submit_id
+        row = self.ase_db.get(id=int(calc_id))
+        # atoms = row.toatoms()
+
+        formula = row.formula
+        p_name = row.p_name
+
+        if self.is_calculated(formula=formula, p_name=p_name):
+            return
+
+        key_value_pairs = {
+            "path": "TEMP",
+            "submit_time": time.time(),
+            "submitted": 1,
+            }
+
+        if batch_no is not None:
+            key_value_pairs.update({'batch': batch_no})
+
+        self.ase_db.update(int(calc_id), **key_value_pairs)
+        #__|
+
+    def check_job_status(self, path, calcid):
+        """
+        """
+        #| - check_job_status
+        d = self.ase_db.get(id=calcid)
+
+        status = 'running'
+        atoms = d.toatoms()
+        calcid = d.id
+
+        time_submit = d.submit_time
+        time_i = time.time()
+        time_elapsed = time_i - time_submit
+
+        if time_elapsed > self.job_complete_time:
+            # Job completed
+            status = 'completed'
+
+            train_features, train_target = self.get_fingerprints([calcid])
+            shape = train_features.shape
+            random_vect = self.random_vect[0:shape[-1]]
+            dummy_energy = random_vect.dot(train_features[0]) / 1000
+
+            atoms = copy.deepcopy(atoms)
+            calc = DummyCalc(energy_zero=dummy_energy)
+            atoms.set_calculator(calc)
+
+            path = d.path
+            runpath = "TEMP"
+
+            new_calcid = self.save_completed_calculation(
+                atoms, path, runpath, calcid,
+                read_params=False,
+                # atoms, calcid,
+                )
+            calcid = new_calcid
+
+        else:
+            # Job not completed
+            status = 'running'
+
+
+        return(status, calcid)
+        #__|
+
+    #__|
+
+
 def clean_key_value_pairs(key_value_pairs):
     for key, value in key_value_pairs.items():
         if isinstance(value, list):
