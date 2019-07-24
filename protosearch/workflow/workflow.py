@@ -15,7 +15,6 @@ from protosearch.utils.standards import VaspStandards
 from protosearch.calculate.submit import TriSubmit
 from .prototype_db import PrototypeSQL
 
-
 class Workflow(PrototypeSQL):
     """Submits calculations with TriSubmit, and tracks the calculations
     in an ASE db.
@@ -356,12 +355,10 @@ class DummyWorkflow(Workflow):
     """
     """
 
-    #| - DummyWorkflow
     def __init__(self,
         job_complete_time=0.6,
         *args, **kwargs,
         ):
-        #| - __init__
         print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
 
         super().__init__(*args, **kwargs)
@@ -374,7 +371,6 @@ class DummyWorkflow(Workflow):
         # Will be dotted with fingerprints to produce dummy 'energy' output
         np.random.seed(0)
         self.random_vect = np.random.rand(1, 1000)[0]
-        #__|
 
     def recollect(self):
         # print("Not actually calling trisync here")
@@ -384,7 +380,6 @@ class DummyWorkflow(Workflow):
         """
         Submit an atomic structure by id
         """
-        #| - submit_id
         row = self.ase_db.get(id=int(calc_id))
         # atoms = row.toatoms()
 
@@ -404,12 +399,10 @@ class DummyWorkflow(Workflow):
             key_value_pairs.update({'batch': batch_no})
 
         self.ase_db.update(int(calc_id), **key_value_pairs)
-        #__|
 
     def check_job_status(self, path, calcid):
         """
         """
-        #| - check_job_status
         d = self.ase_db.get(id=calcid)
 
         status = 'running'
@@ -449,9 +442,7 @@ class DummyWorkflow(Workflow):
 
 
         return(status, calcid)
-        #__|
 
-    #__|
 
 
 def clean_key_value_pairs(key_value_pairs):
