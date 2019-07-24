@@ -7,12 +7,11 @@ from protosearch.active_learning import ActiveLearningLoop
 class MetaAnalysis(ActiveLearningLoop):
 
     def __init__(self,
-                 chemical_formulas,
-                 max_atoms):
+        *args, **kwargs,
+        ):
         self.energies = None
-        
-        super().__init__(chemical_formulas=chemical_formulas,
-                         max_atoms=max_atoms)
+
+        super().__init__(*args, **kwargs)
 
 
     def plot_fingerprint_variation(self):
