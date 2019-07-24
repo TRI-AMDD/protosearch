@@ -231,7 +231,7 @@ class CellParameters:
         b2 = be.bulk.BULK()
 
         poscar = io.StringIO()
-        write_vasp(filename=poscar, atoms=atoms, vasp5=True,
+        write_vasp(poscar, atoms=atoms, vasp5=True,
                    long_format=False, direct=True)
 
         b2.set_structure_from_file(poscar.getvalue())
