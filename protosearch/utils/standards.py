@@ -7,12 +7,15 @@ class VaspStandards():
     # Parameters to that will be tracked in parameterized model
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
-                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave']
+                              'nsw', 'nelm', 'ediff', 'ediffg']
+
+    fixed_parameters = ['prec', 'algo', 'lwave']
 
     u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj']
 
     """Parameters are heavily inspired by MP standard settings at
-    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/io/vasp/MPRelaxSet.yaml
+    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/
+    io/vasp/MPRelaxSet.yaml
     """
 
     # is kspacing = 0.25 compatible with materials project reciprocal_density = 64?
@@ -30,6 +33,7 @@ class VaspStandards():
                        'nsw': 99,  # maximum number of ionic steps
                        'nelm': 100,  # maximum number of electronic steps
                        'ediff': 10,  # sc accuracy in units of 1e-6
+                       'ediffg': 20,  # force convergence in units of 1e-3
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
                        'lwave': False,  # save wavefunctions or not
@@ -44,7 +48,7 @@ class VaspStandards():
     calc_decimal_parameters = {'kspacing': 0.01,
                                'sigma': 0.01,
                                'ediff': 1e-6,
-                               # 'ediffg': -0.001,
+                               'ediff': -1e-3,
                                }
 
     paw_potentials = {'Li': '_sv',

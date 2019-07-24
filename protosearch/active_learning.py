@@ -104,10 +104,10 @@ class ActiveLearningLoop:
             # get formation energy of completed jobs and save to db
             self.save_formation_energies()
 
-            happy = self.evaluate()
-
             # save regenerated fingerprints to db (changes after relaxation)
             self.generate_fingerprints(completed=True)
+
+            happy = self.evaluate()
 
             # retrain ML model
             self.train_ids = self.DB.get_completed_structure_ids()
@@ -118,7 +118,8 @@ class ActiveLearningLoop:
             all_energies = list(self.energies) + list(self.train_target)
             all_uncertainties = list(self.uncertainties) + \
                 list(np.zeros_like(self.train_target))
-            self.DB.write_predictions(self.batch_no, all_ids, all_energies, all_uncertainties)
+            self.DB.write_predictions(
+                self.batch_no, all_ids, all_energies, all_uncertainties)
             # acqusition -> select next batch
             self.acquire_batch()
 
@@ -127,25 +128,40 @@ class ActiveLearningLoop:
             WF.submit_id_batch(self.batch_ids)
             self.DB.write_status(last_batch_no=self.batch_no)
 
-
     def test_run(self):
         """Use already completed calculations to test the loop """
         WF = self.Workflow(db_filename=self.db_filename)
         self.status = self.DB.get_status()
+        self.corrected_batch_size = self.batch_size
 
         self.batch_no = 1
         self.batch_ids = []
-        self.train_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
         self.test_ids = self.DB.get_completed_structure_ids()
+        self.train_ids = self.test_ids[:self.batch_size]
+        self.test_ids = [
+            t for t in self.test_ids if not t in self.train_ids]
 
         while len(self.test_ids) > 0:
+            self.train_ml()
+            self.acquire_batch()
+
             self.train_ids += self.batch_ids
             self.test_ids = [
                 t for t in self.test_ids if not t in self.train_ids]
 
-            self.train_ml()
-            self.acquire_batch()
+            all_ids = self.test_ids + self.train_ids
+            all_energies = np.array(
+                list(self.energies) + list(self.train_target))
+            all_uncertainties = np.array(list(self.uncertainties) +
+                                         list(np.zeros_like(self.train_target)))
+
+            prediction = {'batch_no': self.batch_no,
+                          'ids': all_ids,
+                          'energies': all_energies,
+                          'vars': all_uncertainties}
+
             self.batch_no += 1
+            yield prediction
 
     def initialize(self):
         if not self.status['enumerated']:
@@ -300,11 +316,15 @@ class ActiveLearningLoop:
     def acquire_batch(self, kappa=1.5, batch_size=None):
         if not batch_size:
             batch_size = self.corrected_batch_size
-
+        n_u = batch_size // 3
+        n_e = batch_size - n_u
         # Simple acquisition function
         values = self.energies - kappa * self.uncertainties
         self.acqu = values
-        indices = np.argsort(values)
+        indices_e = np.argsort(values)
+        indices_u = np.argsort(-self.uncertainties)
+
+        indices = list(indices_e[:n_e]) + list(indices_u[:n_u])
         self.batch_ids = list(np.array(self.test_ids)[indices])[
             :batch_size]
 
