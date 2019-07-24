@@ -68,7 +68,7 @@ class Workflow(PrototypeSQL):
                            'wyckoffs': json.dumps(prototype['wyckoffs']),
                            'species': json.dumps(prototype['species'])}
         if batch_no:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.write_submission(key_value_pairs)
 
@@ -112,7 +112,7 @@ class Workflow(PrototypeSQL):
                            'species': json.dumps(BB.species)}
 
         if batch_no:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.write_submission(key_value_pairs)
 
@@ -139,7 +139,7 @@ class Workflow(PrototypeSQL):
         for calc_id in calc_ids:
             self.submit_id(calc_id, ncpus, batch_no, calc_parameters)
 
-    def submit_id(self, calc_id,  ncpus=1, batch_no=None, calc_parameters=None):
+    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None):
         """
         Submit an atomic structure by id
         """
@@ -164,7 +164,7 @@ class Workflow(PrototypeSQL):
                            'submitted': 1}
 
         if batch_no is not None:
-            key_value_pairs.update({'batch':  batch_no})
+            key_value_pairs.update({'batch': batch_no})
 
         self.ase_db.update(int(calc_id), **key_value_pairs)
 
@@ -299,6 +299,7 @@ class Workflow(PrototypeSQL):
         self._initialize(con)
 
         for d in self.ase_db.select(completed=-1):
+            # 'error' is undefined
             resubmit, handle = vasp_errors(error)
             if not resubmit:
                 print('Job errored: {}'.format(handle))
