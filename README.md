@@ -11,9 +11,6 @@ Note that the required BulkEnumeration is currently available by request only.
     - The `systems` table excludes entries from the `prototypes` table (max_atoms)
     - Consider creating a standardized id system from the outset that is shared among all tables
 
-  - Fingerprints must be standardized
-  - Fingerprints must be updated every time a new entry is added since standardization depends on the "mean" and/or standard deviation of the whole data set
-
 ## Required Data Files
 Large data files which are necessary to run certain modules (OQMD db interface) are hosted on the TRI s3 bucket in the following location:
 
