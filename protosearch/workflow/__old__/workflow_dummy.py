@@ -6,11 +6,11 @@ from protosearch.utils import get_basepath
 from protosearch.build_bulk.classification import get_classification
 from .prototype_db import PrototypeSQL
 from protosearch.utils.dummy_calc import DummyCalc
-
+from protosearch.workflow.workflow import Workflow
 # from protosearch.utils.standards import VaspStandards
 
 
-class DummyWorkflow(PrototypeSQL):
+class DummyWorkflow(Workflow):
     """Submits calculations with TriSubmit, and tracks the calculations
     in an ASE db.
     """
@@ -28,16 +28,21 @@ class DummyWorkflow(PrototypeSQL):
         #| - __init__
         print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
 
-        self.job_complete_time = job_complete_time
+        # self.job_complete_time = job_complete_time
+        #
+        # self.basepath = get_basepath(calculator=calculator,
+        #                              ext=basepath_ext)
+        # if not db_filename:
+        #     db_filename = self.basepath + '/prototypes.db'
 
-        self.basepath = get_basepath(calculator=calculator,
-                                     ext=basepath_ext)
-        if not db_filename:
-            db_filename = self.basepath + '/prototypes.db'
+        super().__init__(
+            calculator='vasp',
+            db_filename=None,
+            basepath_ext=None,
+            )
 
-        super().__init__(filename=db_filename)
-        self._connect()
-        self.collected = False
+        # self._connect()
+        # self.collected = False
 
         # Will be dotted with fingerprints to produce dummy 'energy' output
         np.random.seed(0)
