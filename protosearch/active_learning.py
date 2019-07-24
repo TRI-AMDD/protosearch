@@ -1,14 +1,13 @@
-import sys
 import time
 import numpy as np
 import pandas as pd
-import pylab as p
 
-from protosearch.build_bulk.enumeration import Enumeration, AtomsEnumeration, get_stoich_from_formulas
+from protosearch.build_bulk.enumeration import (
+    Enumeration, AtomsEnumeration, get_stoich_from_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
-from protosearch.ml_modelling.catlearn_interface import get_voro_fingerprint, predict
+from protosearch.ml_modelling.catlearn_interface import (
+    get_voro_fingerprint, predict)
 from protosearch.ml_modelling.fingerprint import FingerPrint
-# from protosearch.workflow.workflow import Workflow
 
 
 class ActiveLearningLoop:
