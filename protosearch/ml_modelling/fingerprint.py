@@ -117,7 +117,6 @@ class FingerPrint:
             # Checking type of fingerprints (must be pandas dataframe)
             # Fingerprints must be given as a pandas dataframe
             is_pd_df = isinstance(features_i, pd.DataFrame)
-
             err_mess_i = "Fingerprint class must return a pandas dataframe"
             assert is_pd_df, err_mess_i
 
@@ -193,7 +192,7 @@ class VoronoiFingerprint:
         check that inputs are atoms objects
 
         """
-        self.check_inputs()
+        self.check_inputs(atoms_list)
         self.Voro_inst = VoronoiFingerprintGenerator(
             atoms_list,
             delete_temp=False)

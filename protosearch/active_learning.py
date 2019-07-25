@@ -5,9 +5,8 @@ import pandas as pd
 from protosearch.build_bulk.enumeration import (
     Enumeration, AtomsEnumeration, get_stoich_from_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
-from protosearch.ml_modelling.catlearn_interface import (
-    get_voro_fingerprint, predict)
-from protosearch.ml_modelling.fingerprint import FingerPrint
+from protosearch.ml_modelling.catlearn_interface import predict
+from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
 
 
 class ActiveLearningLoop:
@@ -278,6 +277,7 @@ class ActiveLearningLoop:
             fingerprint_matrix = FP.fingerprints["voronoi"].values
         for i, id in enumerate(ids):
             target = target_list.get(str(id), None)
+            # TODO save fingerprint with pandas.dataframe.to_sql
             self.DB.save_fingerprint(id, input_data=fingerprint_matrix[i],
                                      output_data=target)
 
