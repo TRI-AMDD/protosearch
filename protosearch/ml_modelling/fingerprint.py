@@ -1,11 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""
-
-"""
-
-# | - Import Modules
 import sys
 import copy
 
@@ -20,7 +12,6 @@ from catlearn.preprocess.clean_data import (
 )
 
 from catlearn.preprocess.scaling import standardize
-# __|
 
 # Featurizing methods implemented, must have corresponding class
 feature_methods_dict = {
@@ -171,13 +162,11 @@ class FingerPrint:
             print("MISTAKE iasdjfisj2")
         if len(fingerprints) != len(df_out):
             print("MISTAKE iasdjfisj3")
-        # |
 
         self.fingerprints = df_out
 
         # return(input_data, fingerprints)
         # return(df_out)
-        # |
 
 
 class VoronoiFingerprint:
