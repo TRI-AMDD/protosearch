@@ -248,11 +248,13 @@ class ActiveLearningLoop:
 
         self.generate_fingerprints()
 
-    def generate_fingerprints(self, code='catlearn', completed=False):
+    def generate_fingerprints(self,
+                              feature_methods=['voronoi'],
+                              completed=False):
         self.DB._connect()
         ase_db = self.DB.ase_db
         atoms_list = []
-        output_list = {}
+        target_list = {}
 
         ids = self.DB.get_new_fingerprint_ids(completed=completed)
         for id in ids:
@@ -260,29 +262,24 @@ class ActiveLearningLoop:
             atoms_list += [row.toatoms()]
             Ef = row.get('Ef', None)
             if Ef:
-                output_list[str(id)] = {'Ef': Ef}
+                target_list[str(id)] = {'Ef': Ef}
 
         if atoms_list:
-            # Kirsten's fingerprinting method
-            # fingerprint_data = get_voro_fingerprint(atoms_list)
-
             # NOTE TODO In principle everytime a fingerprint is generated every
             # other fingerprint should be updated (assuming we're
             # standardizing the data, which we should)
+            ### Let's clean the data later and store raw fingerprints for now
             df_atoms = pd.DataFrame(atoms_list)
-            df_atoms.columns = ["atoms"]
-            FP = FingerPrint(**{
-                "feature_methods": ["voronoi"], "input_data": df_atoms,
-                "input_index": ["atoms"]})
+            df_atoms.columns = ['atoms']
+            FP = FingerPrint(feature_methods=feature_methods,
+                             input_data=df_atoms,
+                             input_index=['atoms'])
             FP.generate_fingerprints()
-            # FP.clean_features()  # Doesn't work for just 1 atom now, fix
-            df_features = FP.fingerprints["voronoi"].values
-            fingerprint_data = df_features
-            columns, fingerprint_data = get_voro_fingerprint(atoms_list)
+            fingerprint_matrix = FP.fingerprints["voronoi"].values
         for i, id in enumerate(ids):
-            output_data = output_list.get(str(id), None)
-            self.DB.save_fingerprint(id, input_data=fingerprint_data[i],
-                                     output_data=output_data)
+            target = target_list.get(str(id), None)
+            self.DB.save_fingerprint(id, input_data=fingerprint_matrix[i],
+                                     output_data=target)
 
     def save_formation_energies(self):
         ase_db = self.DB.ase_db
