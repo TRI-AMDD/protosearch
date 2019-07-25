@@ -44,7 +44,7 @@ class FingerPrint:
         input_index: str
             must be defined to index the correct column in inpud_data
         clean: Bool
-            wether to clean features or not
+            whether to clean features or not
         """
         self.feature_methods = feature_methods
         self.input_index = input_index
