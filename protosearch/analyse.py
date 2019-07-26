@@ -31,9 +31,9 @@ class MetaAnalysis(ActiveLearningLoop):
             self.get_new_prediction()
 
         all_ids = self.test_ids + self.train_ids
-        all_energies = np.array(list(self.energies) + list(self.train_target))
+        all_energies = np.array(list(self.energies) + list(self.targets))
         all_uncertainties = np.array(list(self.uncertainties) +
-                                     list(np.zeros_like(self.train_target)))
+                                     list(np.zeros_like(self.target)))
 
         idx = np.argsort(all_energies)
         energies = all_energies[idx]
@@ -59,9 +59,9 @@ class MetaAnalysis(ActiveLearningLoop):
         if self.energies is None:
             self.get_new_prediction()
         all_ids = self.test_ids + self.train_ids
-        all_energies = np.array(list(self.energies) + list(self.train_target))
+        all_energies = np.array(list(self.energies) + list(self.targets))
         all_uncertainties = np.array(list(self.uncertainties) +
-                                     list(np.zeros_like(self.train_target)))
+                                     list(np.zeros_like(self.targets)))
         prediction = {'energies': all_energies,
                       'vars': all_uncertainties,
                       'ids': all_ids,
