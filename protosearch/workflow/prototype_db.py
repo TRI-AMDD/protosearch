@@ -413,8 +413,12 @@ class PrototypeSQL:
         cur = con.cursor()
         ids = df['id'].values
         id_string = ', '.join([str(i) for i in ids])
-
-        cur.execute('DELETE from {} where id in ({})'.format(table, id_string))
+        cur.execute(
+            """SELECT count(*) FROM sqlite_master WHERE
+            type='table' AND name='{}';""".format(table))
+        table_count = cur.fetchall()[0][0]
+        if table_count:
+            cur.execute('DELETE from {} where id in ({})'.format(table, id_string))
         df.to_sql(table, con=con, index=False,
                   index_label=None, if_exists='append')
 
@@ -457,40 +461,24 @@ class PrototypeSQL:
         con.commit()
         con.close()
 
-    def get_fingerprints(self, ids):
-        con = self.connection or self._connect()
-        self._initialize(con)
-        cur = con.cursor()
-        ids = sorted(ids)
-        ids = [str(i) for i in ids]
-        id_str = ','.join(ids)
-        cur.execute(
-            'SELECT * from fingerprint where id in ({}) order by id'.format(id_str))
-        data = cur.fetchall()
-        feature_matrix = []
-        target_list = []
-        for d in data:
-            feature_matrix += [json.loads(d[1])]
-            if d[2]:
-                target_list += [json.loads(d[2]).get('Ef', None)]
-            else:
-                target_list += [None]
-        return np.array(feature_matrix), np.array(target_list)
-
     def get_new_fingerprint_ids(self, completed=True):
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
+        cur.execute(
+            """SELECT count(*) FROM sqlite_master WHERE
+            type='table' AND name='target';""")
+        table_count = cur.fetchall()[0][0]
+
         if completed:
-            query = \
-                """SELECT id from systems
-                where energy is not null
-                and id not in
-                (SELECT distinct id from target)"""
+            query = 'SELECT id from systems where energy is not null'
+            if table_count:
+                query += ' and id not in (SELECT distinct id from target)'
         else:
             query = \
-                """SELECT id from systems where
-                id not in (SELECT distinct id from fingerprint)"""
+                """SELECT id from systems"""
+            if table_count:
+                query += ' where id not in (SELECT distinct id from fingerprint)'
 
         cur.execute(query)
         ids = cur.fetchall()
