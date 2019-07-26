@@ -133,6 +133,7 @@ class FingerPrint:
                                      keys=fingerprints.keys())\
 
         self.fingerprints = fingerprints_out
+        return self.fingerprints
 
     def join_input_to_fingerprints(self):
         """Concancotate
@@ -210,41 +211,23 @@ class VoronoiFingerprint:
         self.features = self.Voro_inst.generate()
 
 
-def clean_features(df_features):
-    # clean_features
-    df_features_cpy = copy.deepcopy(df_features)
-
-    train_features = df_features_cpy.values
-    train_labels = list(df_features_cpy)
-
+def clean_features(train_features, test_features, scale=False):
+    # get finite features
+    output = clean_infinite(train_features,
+                            test=test_features)
     # Clean variance
-    output = clean_variance(train_features,
-                            labels=train_labels)
+    output = clean_variance(output['train'],
+                            output['test'])
     # Clean infinite
     output = clean_infinite(output['train'],
-                            labels=output['labels'])
+                            output['test'])
 
     # Clean skewness
     output = clean_skewness(output['train'],
-                            labels=output['labels'])
+                            output['test'])
 
-    # Standardize data
-    ###  Skip - Done in the GP for now.
-    # output = standardize(
-    #    train_features,
-    #    )
+    if scale:
+        output = standardize(output['train'],
+                             output['test'])
 
-    # Reconstruct dataframe
-    df_features_cleaned = pd.DataFrame(data=output['train'])
-
-    multi_index = pd.MultiIndex.from_tuples(
-        [tuple(i) for i in output['labels']])
-
-    df_features_cleaned.columns = multi_index
-
-    df_features_cleaned = df_features_cleaned.set_index(
-        df_features.index,
-        drop=True, append=False,
-        inplace=False, verify_integrity=False)
-
-    return df_features_cleaned
+    return output['train'], output['test']

@@ -16,6 +16,7 @@ from protosearch.calculate.dummy_calc import DummyCalc
 from protosearch.calculate.submit import TriSubmit
 from .prototype_db import PrototypeSQL
 
+
 class Workflow(PrototypeSQL):
     """Submits calculations with TriSubmit, and tracks the calculations
     in an ASE db.
@@ -242,8 +243,8 @@ class Workflow(PrototypeSQL):
         return status, calcid
 
     def save_completed_calculation(self, atoms, path, runpath, calcid,
-        read_params=True,
-        ):
+                                   read_params=True,
+                                   ):
 
         self.ase_db.update(id=calcid,
                            completed=1)
@@ -338,14 +339,27 @@ class Workflow(PrototypeSQL):
     def get_completed_batch(self):
         ids = self.check_submissions()
 
+    def reclassify(self, tolerance=1e-2):
+        """Reclassify prototypes of all completed structures"""
+        self._collect()
+        con = self.connection or self._connect()
+        self._initialize(con)
+
+        for row in self.ase_db.select(relaxed=1):
+            prototype, cell_parameters = \
+                get_classification(row.toatoms())
+            prototype.update(cell_parameters)
+            prototype = clean_key_value_pairs(prototype)
+            self.ase_db.update(row.id, **prototype)
+
 
 class AWSWorkflow(Workflow):
     """
     """
 
     def __init__(self,
-        *args, **kwargs,
-        ):
+                 *args, **kwargs,
+                 ):
 
         print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
 
@@ -357,9 +371,9 @@ class DummyWorkflow(Workflow):
     """
 
     def __init__(self,
-        job_complete_time=0.6,
-        *args, **kwargs,
-        ):
+                 job_complete_time=0.6,
+                 *args, **kwargs,
+                 ):
         print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
 
         super().__init__(*args, **kwargs)
@@ -394,7 +408,7 @@ class DummyWorkflow(Workflow):
             "path": "TEMP",
             "submit_time": time.time(),
             "submitted": 1,
-            }
+        }
 
         if batch_no is not None:
             key_value_pairs.update({'batch': batch_no})
@@ -434,16 +448,14 @@ class DummyWorkflow(Workflow):
                 atoms, path, runpath, calcid,
                 read_params=False,
                 # atoms, calcid,
-                )
+            )
             calcid = new_calcid
 
         else:
             # Job not completed
             status = 'running'
 
-
         return(status, calcid)
-
 
 
 def clean_key_value_pairs(key_value_pairs):
