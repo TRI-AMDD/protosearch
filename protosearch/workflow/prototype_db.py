@@ -25,13 +25,6 @@ init_commands = [
     species text,
     wyckoffs text);""",
 
-    """CREATE TABLE fingerprint (
-    id integer PRIMARY KEY,
-    input text,
-    output text,
-    FOREIGN KEY (id) REFERENCES systems(id));
-    """,
-
     """CREATE TABLE prediction (
     batch_no,
     id integer,
@@ -414,7 +407,31 @@ class PrototypeSQL:
         ids = [i[0] for i in ids]
         return ids
 
-    def save_fingerprint(self, id, input_data, output_data=None):
+    def write_dataframe(self, table, df):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        ids = df['id'].values
+        id_string = ', '.join([str(i) for i in ids])
+
+        cur.execute('DELETE from {} where id in ({})'.format(table, id_string))
+        df.to_sql(table, con=con, index=False,
+                  index_label=None, if_exists='append')
+
+    def load_dataframe(self, table, ids=None):
+        con = self.connection or self._connect()
+        self._initialize(con)
+
+        query = 'SELECT * from {}'.format(table)
+        if ids:
+            ids = sorted(ids)
+            id_str = ','.join([str(i) for i in ids])
+            query += ' where id in ({})'.format(id_str)
+
+        df = pd.read_sql_query(query, con)
+        return df
+
+    def write_fingerprint(self, id, input_data, output_data=None):
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
@@ -441,9 +458,6 @@ class PrototypeSQL:
         con.close()
 
     def get_fingerprints(self, ids):
-        """
-        NOTE: Does this return the output in the same order as they're inputed
-        """
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
@@ -472,7 +486,7 @@ class PrototypeSQL:
                 """SELECT id from systems
                 where energy is not null
                 and id not in
-                (SELECT distinct id from fingerprint where output is not null)"""
+                (SELECT distinct id from target)"""
         else:
             query = \
                 """SELECT id from systems where
@@ -524,8 +538,8 @@ class PrototypeSQL:
         return predictions
 
     def get_pandas_tables(self,
-        write_csv_tables=False,
-        tables_list=None):
+                          write_csv_tables=False,
+                          tables_list=None):
         """Convert SQL tables to Pandas dataframes.
 
         Parameters:
@@ -544,6 +558,7 @@ class PrototypeSQL:
                 'information',
                 'prototype',
                 'fingerprint',
+                'target'
                 'prediction',
                 'enumeration',
                 'batch_status',
@@ -580,27 +595,3 @@ def get_table(table_name, db, write_csv_tables):
     if write_csv_tables:
         table.to_csv(table_name + '.csv', index_label='index')
     return(table)
-
-# def to_csv(db_file=None):
-#     db = sqlite3.connect(db_file)
-#     cursor = db.cursor()
-#     cursor.execute(
-#         "SELECT name FROM sqlite_master WHERE type='table';")
-#     tables = cursor.fetchall()
-#
-#     tables_dict = {}
-#     for table_name in tables:
-#         table_name = table_name[0]
-#
-#         if tables_list is not None:
-#             if table_name in tables_list:
-#                 table_i = get_table(table_name, db)
-#                 tables_dict[table_name] = table_i
-#             else:
-#                 table_i = get_table(table_name, db)
-#                 tables_dict[table_name] = table_i
-#
-#     cursor.close()
-#     db.close()
-#
-#     return(tables_dict)
