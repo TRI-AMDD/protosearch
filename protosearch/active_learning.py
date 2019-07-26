@@ -8,6 +8,7 @@ from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.workflow.workflow import Workflow as WORKFLOW
 from protosearch.ml_modelling.catlearn_interface import predict
 from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
+from protosearch.ml_modelling.regression_model import get_regression_model
 
 
 class ActiveLearningLoop:
@@ -115,9 +116,9 @@ class ActiveLearningLoop:
 
             self.train_ml()
             all_ids = self.test_ids + self.train_ids
-            all_energies = list(self.energies) + list(self.train_target)
+            all_energies = list(self.energies) + list(self.targets)
             all_uncertainties = list(self.uncertainties) + \
-                list(np.zeros_like(self.train_target))
+                list(np.zeros_like(self.targets))
             self.DB.write_predictions(
                 self.batch_no, all_ids, all_energies, all_uncertainties)
             # acqusition -> select next batch
@@ -256,30 +257,33 @@ class ActiveLearningLoop:
         target_list = {}
 
         ids = self.DB.get_new_fingerprint_ids(completed=completed)
+        if not ids:
+            print('Fingerprints up do date!')
+            return
+        atoms_df = pd.DataFrame(columns=['atoms'])
+        targets_df = pd.DataFrame(columns=['id', 'Ef'])
+
         for id in ids:
             row = ase_db.get(id=id)
-            atoms_list += [row.toatoms()]
-            Ef = row.get('Ef', None)
-            if Ef:
-                target_list[str(id)] = {'Ef': Ef}
+            atoms_df = atoms_df.append({'atoms': row.toatoms()},
+                                       ignore_index=True)
+            if row.get('Ef', None):
+                targets_df = targets_df.append({'id': id, 'Ef': row.Ef},
+                                               ignore_index=True)
 
-        if atoms_list:
-            # NOTE TODO In principle everytime a fingerprint is generated every
-            # other fingerprint should be updated (assuming we're
-            # standardizing the data, which we should)
-            # Let's clean the data later and store raw fingerprints for now
-            df_atoms = pd.DataFrame(atoms_list)
-            df_atoms.columns = ['atoms']
-            FP = FingerPrint(feature_methods=feature_methods,
-                             input_data=df_atoms,
-                             input_index=['atoms'])
-            FP.generate_fingerprints()
-            fingerprint_matrix = FP.fingerprints["voronoi"].values
-        for i, id in enumerate(ids):
-            target = target_list.get(str(id), None)
-            # TODO save fingerprint with pandas.dataframe.to_sql
-            self.DB.save_fingerprint(id, input_data=fingerprint_matrix[i],
-                                     output_data=target)
+        targets_df = targets_df.astype({'id': int})
+        FP = FingerPrint(feature_methods=feature_methods,
+                         input_data=atoms_df,
+                         input_index=['atoms'])
+
+        fingerprints_df = FP.generate_fingerprints()['voronoi'].assign(id=ids)
+        fingerprints_df = fingerprints_df.astype({'id': int})
+
+        self.DB.write_dataframe(table='fingerprint',
+                                df=fingerprints_df)
+
+        self.DB.write_dataframe(table='target',
+                                df=targets_df)
 
     def save_formation_energies(self):
         ase_db = self.DB.ase_db
@@ -287,22 +291,31 @@ class ActiveLearningLoop:
         # Should be updated to only run over new completed ids
         for row in self.DB.ase_db.select('-Ef', relaxed=1):
             energy = row.energy
-            # MENG
-            # row.formula
-            #nA, nB
             references = [0, 0]  # Update
             formation_energy = (energy - sum(references)) / row.natoms
 
             ase_db.update(id=row.id, Ef=formation_energy)
 
-    def train_ml(self):
-        train_features, train_target = self.DB.get_fingerprints(
-            ids=self.train_ids)
-        self.train_target = train_target
-        test_features, test_target = self.DB.get_fingerprints(
-            ids=self.test_ids)
+    def train_ml(self, model='catlearn'):
+        train_features = self.DB.load_dataframe(
+            'fingerprint', ids=self.train_ids)
+        ids_train = train_features.pop('id')
+        targets = self.DB.load_dataframe('target', ids=self.train_ids)
+        ids_targets = targets.pop('id')
+        test_features = self.DB.load_dataframe(
+            'fingerprint', ids=self.test_ids)
+        ids_test = test_features.pop('id')
 
-        predictions = predict(train_features, self.train_target, test_features)
+        assert np.all(ids_train == ids_targets)
+        assert np.all(ids_test == self.test_ids)
+
+        self.targets = targets.values
+
+        train_features, test_features = clean_features(train_features.values,
+                                                       test_features.values)
+
+        Model = get_regression_model(model)(train_features, self.targets)
+        predictions = Model.predict(test_features)
 
         self.energies = predictions['prediction']
         index = [i for i in range(len(self.test_ids))
