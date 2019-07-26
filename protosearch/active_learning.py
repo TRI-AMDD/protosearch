@@ -6,7 +6,6 @@ from protosearch.build_bulk.enumeration import (
     Enumeration, AtomsEnumeration, get_stoich_from_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.workflow.workflow import Workflow as WORKFLOW
-from protosearch.ml_modelling.catlearn_interface import predict
 from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
 from protosearch.ml_modelling.regression_model import get_regression_model
 
@@ -152,9 +151,9 @@ class ActiveLearningLoop:
 
             all_ids = self.test_ids + self.train_ids
             all_energies = np.array(
-                list(self.energies) + list(self.train_target))
+                list(self.energies) + list(self.targets))
             all_uncertainties = np.array(list(self.uncertainties) +
-                                         list(np.zeros_like(self.train_target)))
+                                         list(np.zeros_like(self.targets)))
 
             prediction = {'batch_no': self.batch_no,
                           'ids': all_ids,
