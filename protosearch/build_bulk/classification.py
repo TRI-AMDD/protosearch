@@ -4,11 +4,11 @@ import bulk_enumerator as be
 from ase.io.vasp import write_vasp
 
 
-def get_classification(atoms):
+def get_classification(atoms, tolerance=1e-2):
     """ Get the prototype and cell parameters of an atomic structure
     in ASE Atoms format"""
 
-    b = be.bulk.BULK()
+    b = be.bulk.BULK(tolerance=tolerance)
 
     poscar = io.StringIO()
     write_vasp(filename=poscar, atoms=atoms, vasp5=True,
