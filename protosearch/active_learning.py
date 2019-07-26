@@ -5,6 +5,7 @@ import pandas as pd
 from protosearch.build_bulk.enumeration import (
     Enumeration, AtomsEnumeration, get_stoich_from_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
+from protosearch.workflow.workflow import Workflow as WORKFLOW
 from protosearch.ml_modelling.catlearn_interface import predict
 from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
 
@@ -13,7 +14,7 @@ class ActiveLearningLoop:
 
     def __init__(self,
                  chemical_formulas,
-                 Workflow=None,
+                 Workflow=WORKFLOW,
                  source='prototypes',
                  batch_size=10,
                  max_atoms=None,
@@ -52,7 +53,6 @@ class ActiveLearningLoop:
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
         self.chemical_formulas = chemical_formulas
-        self.Workflow = Workflow
         self.source = source
         self.batch_size = batch_size
         self.max_atoms = max_atoms
@@ -61,6 +61,7 @@ class ActiveLearningLoop:
         self.stop_mode = stop_mode
 
         self.db_filename = '_'.join(chemical_formulas) + '.db'
+        self.Workflow = Workflow(db_filename=self.db_filename)
         self.DB = PrototypeSQL(self.db_filename)
         self.DB.write_status(
             chemical_formulas=chemical_formulas, batch_size=batch_size)
@@ -68,7 +69,7 @@ class ActiveLearningLoop:
     def run(self):
         """Run actice learning loop"""
 
-        WF = self.Workflow(db_filename=self.db_filename)
+        WF = self.Workflow
         self.status = self.DB.get_status()
 
         if not self.status['initialized']:
@@ -129,7 +130,7 @@ class ActiveLearningLoop:
 
     def test_run(self):
         """Use already completed calculations to test the loop """
-        WF = self.Workflow(db_filename=self.db_filename)
+        WF = self.Workflow
         self.status = self.DB.get_status()
         self.corrected_batch_size = self.batch_size
 
@@ -214,7 +215,6 @@ class ActiveLearningLoop:
                 npoints = sum([int(s) for s in stoichiometry.split('_')])
                 E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
                                 SG_start=1, SG_end=230, num_type='wyckoff')
-                                # SG_start=5, SG_end=5, num_type='wyckoff')  # For testing
 
                 E.store_enumeration(filename=self.db_filename)
 
@@ -267,7 +267,7 @@ class ActiveLearningLoop:
             # NOTE TODO In principle everytime a fingerprint is generated every
             # other fingerprint should be updated (assuming we're
             # standardizing the data, which we should)
-            ### Let's clean the data later and store raw fingerprints for now
+            # Let's clean the data later and store raw fingerprints for now
             df_atoms = pd.DataFrame(atoms_list)
             df_atoms.columns = ['atoms']
             FP = FingerPrint(feature_methods=feature_methods,
@@ -301,6 +301,7 @@ class ActiveLearningLoop:
         self.train_target = train_target
         test_features, test_target = self.DB.get_fingerprints(
             ids=self.test_ids)
+
         predictions = predict(train_features, self.train_target, test_features)
 
         self.energies = predictions['prediction']
@@ -328,16 +329,13 @@ class ActiveLearningLoop:
 
 if __name__ == "__main__":
     from protosearch.workflow.workflow_dummy import DummyWorkflow
-    from protosearch.workflow.workflow import Workflow
 
     ALL = ActiveLearningLoop(
         chemical_formulas=['Cu2O'],
         max_atoms=10,
         # Workflow=DummyWorkflow,
-        Workflow=Workflow,
         batch_size=1,
         check_frequency=0.6,
         frac_jobs_limit=0.4,
-        stop_mode="job_fraction_limit",
-        )
+        stop_mode="job_fraction_limit")
     ALL.run()
