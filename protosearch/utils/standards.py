@@ -48,7 +48,7 @@ class VaspStandards():
     calc_decimal_parameters = {'kspacing': 0.01,
                                'sigma': 0.01,
                                'ediff': 1e-6,
-                               'ediff': -1e-3,
+                               'ediffg': -1e-3,
                                }
 
     paw_potentials = {'Li': '_sv',

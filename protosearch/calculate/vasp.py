@@ -36,10 +36,12 @@ class VaspModel:
 
         self.sorted_parameters = VaspStandards.sorted_calc_parameters
         self.fixed_parameters = VaspStandards.fixed_parameters
-        self.all_parameters = self.sorted_parameters + self.fixed_parameters
         if ldau_luj:
             self.calc_parameters.update({'ldau_luj': ldau_luj})
-            self.all_parameters += VaspStandards.u_parameters
+            self.sorted_parameters = VaspStandards.sorted_calc_parameters + \
+                VaspStandards.u_parameters
+
+        self.all_parameters = self.sorted_parameters + self.fixed_parameters
 
         self.initial_magmoms = {}
         for symbol in [s for s in symbols if s in CommonCalc.magnetic_trickers]:
