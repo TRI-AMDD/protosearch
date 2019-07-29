@@ -446,9 +446,7 @@ class DummyWorkflow(Workflow):
 
             new_calcid = self.save_completed_calculation(
                 atoms, path, runpath, calcid,
-                read_params=False,
-                # atoms, calcid,
-            )
+                read_params=False)
             calcid = new_calcid
 
         else:
