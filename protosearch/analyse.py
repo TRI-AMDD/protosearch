@@ -8,8 +8,8 @@ from protosearch.active_learning import ActiveLearningLoop
 class MetaAnalysis(ActiveLearningLoop):
 
     def __init__(self,
-        *args, **kwargs,
-        ):
+                 *args, **kwargs,
+                 ):
         self.energies = None
 
         super().__init__(*args, **kwargs)
@@ -150,11 +150,91 @@ class MetaAnalysis(ActiveLearningLoop):
         print('{} out of {} structures changed symmetry during optimization'
               .format(count_changed, count_all))
 
+    def plot_performance(self, verbose=False):
+        train_ids = self.DB.get_completed_structure_ids(completed=1)
+        p_names = []
+
+        for i in train_ids:
+            p_names += [self.DB.ase_db.get(i).p_name]
+
+        p_names, index = np.unique(p_names, return_index=True)
+        train_ids = np.array(train_ids)[index]
+
+        errors = []
+        se = []
+        errors_nonrelaxed = []
+        se_nr = []
+        energies = []
+        mine = 100
+        maxe = -100
+
+        p.figure(figsize=(8, 8))
+        print('Using {} training points'.format(len(train_ids) - 1))
+        print('-------------------------------')
+        for j in range(len(train_ids)):
+            self.test_ids = [train_ids[j]]
+            self.train_ids = np.delete(train_ids, j)
+            initial_id = self.DB.ase_db.get(
+                id=int(self.test_ids[0])).initial_id
+            self.test_ids += [initial_id]
+            self.test_ids = sorted(self.test_ids)
+            row = self.DB.ase_db.get(id=int(self.test_ids[-1]))
+            row_initial = self.DB.ase_db.get(id=initial_id)
+            energy = row.Ef
+
+            self.train_ml()
+
+            errors += [abs(self.energies[1] - energy)]
+            se += [(self.energies[1] - energy)**2]
+            errors_nonrelaxed += [abs(self.energies[0] - energy)]
+            se_nr += [(self.energies[0] - energy)**2]
+
+            if np.any(self.energies < mine):
+                mine = np.min(self.energies)
+            if np.any(self.energies > maxe):
+                maxe = np.max(self.energies)
+
+            p.plot([energy, energy], self.energies, color='gray')
+            p.plot([energy], [self.energies[0]], 'ro')
+            p.plot([energy], [self.energies[-1]], 'bo')
+
+            if verbose:
+                print('--------------------------')
+                print('ids: ', self.test_ids)
+                print('Ef: ', energy)
+                print('Prototype: ', row.p_name)
+                print('fmax: ', row.fmax)
+                print('error relaxed: ', self.energies[1] - energy)
+                print('error nonrelaxed: ', self.energies[0] - energy)
+
+        print('-------------------------------')
+        print('MAE relaxed Voronoi: ', np.mean(errors))
+        print('MAE non-relaxed Voronoi: ', np.mean(errors_nonrelaxed))
+        print('MSE relaxed Voronoi: ', np.mean(se))
+        print('MSE non-relaxed Voronoi: ', np.mean(se_nr))
+
+        p.plot([100], [100], 'ro',
+               label='non-relaxed Voronoi. MAE: {0:.3f}'.format(np.mean(errors_nonrelaxed)))
+        p.plot([100], [100], 'bo',
+               label='relaxed Voronoi. MAE: {0:.3f}'.format(np.mean(errors)))
+
+        p.plot([mine-0.1, maxe+0.1], [mine-0.1, maxe+0.1], 'k-')
+        p.xlim(mine-0.01, maxe+0.01)
+        p.ylim(mine-0.01, maxe+0.01)
+
+        p.title('ML performance for n_train={}'.format(len(train_ids) - 1))
+        p.xlabel('DFT Energy/atom (eV)')
+        p.ylabel('ML MAE (eV)')
+
+        p.legend()
+        p.show()
+
 
 if __name__ == "__main__":
     MA = MetaAnalysis(chemical_formulas=['Cu2O'], max_atoms=10, batch_size=10)
     MA.save_formation_energies()
     MA.generate_fingerprints(completed=True)
+    MA.plot_performance()
     MA.plot_predictions()
     MA.plot_test_model()
     MA.plot_acquisition()
