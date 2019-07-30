@@ -231,9 +231,11 @@ path = sys.path[0]
 
 atoms = read('OUTCAR')
 
-for file in ['INCAR', 'OUTCAR', 'err', 'log']:
+for file in ['INCAR', 'OUTCAR', 'out']:
     os.rename('{}'.format(file), '{}.relax'.format(file))
 
+if os.path.isfile('err'):
+    os.rename('{}'.format(file), '{}.relax'.format(file))
 calc.set(nsw=0)
 
 calc.calculate(atoms)

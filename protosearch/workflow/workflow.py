@@ -235,7 +235,8 @@ class Workflow(PrototypeSQL):
                     status = 'errored'
                     self.save_failed_calculation(root, calcid)
                 break
-            elif 'monitor.sh' in files and 'err' in files:
+            elif 'monitor.sh' in files and ('err' in files
+                                            or 'err.relax' in files):
                 status = 'errored'
                 self.save_failed_calculation(root, calcid)
                 break
@@ -294,13 +295,18 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs = clean_key_value_pairs(
             key_value_pairs)
+        data = {}
+        if os.path.isfile(runpath + '/err'):
+            with open(runpath + '/err', 'r') as errorf:
+                data.update({'error': errorf.read().replace("'", '')})
 
-        with open(runpath + '/err', 'r') as errorf:
-            message = errorf.read().replace("'", '')
+        if os.path.isfile(runpath + '/err.relax'):
+            with open(runpath + '/err.relax', 'r') as errorf:
+                data.update({'error_relax': errorf.read().replace("'", '')})
 
-            self.ase_db.update(id=calcid,
-                               **key_value_pairs,
-                               data={'error': message})
+        self.ase_db.update(id=calcid,
+                           **key_value_pairs,
+                           data=data)
 
     def rerun_failed_calculations(self):
         self._collect()
