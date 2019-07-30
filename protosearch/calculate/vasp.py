@@ -235,7 +235,7 @@ for file in ['INCAR', 'OUTCAR', 'out']:
     os.rename('{}'.format(file), '{}.relax'.format(file))
 
 if os.path.isfile('err'):
-    os.rename('{}'.format(file), '{}.relax'.format(file))
+    os.rename('err', 'err.relax')
 calc.set(nsw=0)
 
 calc.calculate(atoms)
