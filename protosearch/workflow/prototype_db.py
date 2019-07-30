@@ -427,7 +427,7 @@ class PrototypeSQL:
         self._initialize(con)
 
         query = 'SELECT * from {}'.format(table)
-        if ids:
+        if ids is not None:
             ids = sorted(ids)
             id_str = ','.join([str(i) for i in ids])
             query += ' where id in ({})'.format(id_str)
