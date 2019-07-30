@@ -173,23 +173,20 @@ class ActiveLearningLoop:
 
         # Run standard states?
 
-        self.batch_ids = self.DB.get_structure_ids(n_ids=self.batch_size)
+        self.acquire_batch(method='random', batch_size=self.batch_size)
 
     def get_frac_of_systems_processed(self):
         """
-        Get the fraction of structures that have been processed.
-
-        Current implementation simply returns the ratio of systems with the
-        relaxed tag equal to 1 over those equal to 0
-
-        Not sure how failed calculations are considered. COMBAK
+        Get the fraction of structures that have been processed, including
+        completed as well as errored jobs.
         """
-        num_unrelaxed_systems = self.DB.ase_db.count(relaxed=0)
-        num_relaxed_systems = self.DB.ase_db.count(relaxed=1)
+        n_unrelaxed = self.DB.ase_db.count(relaxed=0)
+        n_errored = self.DB.ase_db.count(relaxed=0, completed=-1)
+        n_relaxed = self.DB.ase_db.count(relaxed=1)
 
-        frac_out = num_relaxed_systems / num_unrelaxed_systems
+        frac = (n_relaxed + n_errored) / n_unrelaxed
 
-        return(frac_out)
+        return frac
 
     def evaluate(self):
         happy = False
@@ -323,11 +320,24 @@ class ActiveLearningLoop:
         self.test_ids = list(np.array(self.test_ids)[index])
         self.uncertainties = predictions['uncertainty'][index]
 
-    def acquire_batch(self, kappa=1.5, batch_size=None):
+    def acquire_batch(self, kappa=1.5, method='mix', batch_size=None):
         if not batch_size:
             batch_size = self.corrected_batch_size
-        n_u = batch_size // 3
+
+        if method == 'random':
+            noncompleted_ids = self.DB.get_completed_structure_ids(
+                completed=False)
+            indices = np.random.randint(len(noncompleted_ids), size=batch_size)
+            self.batch_ids = np.array(noncompleted_ids)[indices]
+            return
+
+        if method == 'energy':
+            n_u = 0
+        elif method == 'mix':
+            n_u = batch_size // 3
+
         n_e = batch_size - n_u
+
         # Simple acquisition function
         values = self.energies - kappa * self.uncertainties
         self.acqu = values
