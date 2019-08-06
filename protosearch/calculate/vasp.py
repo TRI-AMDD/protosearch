@@ -95,7 +95,7 @@ class VaspModel:
                 value_i = value
             else:
                 value_i = '#{}'.format(i + 1)
-            if factor:
+            if factor and value is not None:
                 modelstr += '{} = {} * {}\n'.format(param, value_i, factor)
             elif isinstance(value, str):
                 modelstr += "{} = '{}'\n".format(param, value_i)
@@ -110,7 +110,6 @@ class VaspModel:
                         modelstr += ',\n' + ' ' * (len(param) + 2)
                     i += 1
                 modelstr += '}\n'
-
             else:
                 modelstr += '{} = {}\n'.format(param, value_i)
 
@@ -141,7 +140,7 @@ class VaspModel:
         for param in self.all_parameters:
             value = self.calc_parameters[param]
             factor = VaspStandards.calc_decimal_parameters.get(param, None)
-            if factor:
+            if factor and value is not None:
                 modelstr += '    {}={},\n'.format(param,
                                                   round(factor * value, 8))
             elif isinstance(value, str):
