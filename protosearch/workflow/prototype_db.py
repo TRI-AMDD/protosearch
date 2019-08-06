@@ -394,14 +394,15 @@ class PrototypeSQL:
         if completed:
             query =\
                 """select distinct id from number_key_values
-                where key='relaxed' and value=1 order by id"""
+                where key='relaxed' and value=1
+                and id not in (SELECT distinct id from systems where energy > 0)
+                order by id"""
         else:
             query =\
                 """SELECT distinct id from number_key_values
                 where key='submitted' and value=0 and id not in
                 (SELECT distinct value from number_key_values
                 where key='initial_id') order by id"""
-
         cur.execute(query)
         ids = cur.fetchall()
         ids = [i[0] for i in ids]
@@ -479,7 +480,6 @@ class PrototypeSQL:
                 """SELECT id from systems"""
             if table_count:
                 query += ' where id not in (SELECT distinct id from fingerprint)'
-
         cur.execute(query)
         ids = cur.fetchall()
         ids = [i[0] for i in ids]
