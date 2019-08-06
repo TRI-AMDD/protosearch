@@ -1,6 +1,8 @@
 import time
 import numpy as np
 import pandas as pd
+from ase.symbols import string2symbols
+from catlearn.active_learning import acquisition_functions
 
 from protosearch.build_bulk.enumeration import (
     Enumeration, AtomsEnumeration, get_stoich_from_formulas)
@@ -8,6 +10,7 @@ from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.workflow.workflow import Workflow as WORKFLOW
 from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
 from protosearch.ml_modelling.regression_model import get_regression_model
+from protosearch.utils.standards import CrystalStandards
 
 
 class ActiveLearningLoop:
@@ -66,6 +69,72 @@ class ActiveLearningLoop:
         self.DB.write_status(
             chemical_formulas=chemical_formulas, batch_size=batch_size)
 
+    def _initialize(self):
+        if not self.status['enumerated']:
+            self.enumerate_structures()
+            self.DB.write_status(enumerated=1)
+        if not self.status['fingerprinted']:
+            self.generate_fingerprints()
+            self.DB.write_status(fingerprinted=1)
+
+        self.batch_no = (self.status.get('last_batch_no', None) or 0) + 1
+
+        elements = []
+        for formula in self.chemical_formulas:
+            elements += list(set(string2symbols(formula)))
+
+        self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
+        self.DB.write_status(last_batch_no=self.batch_no)
+
+        failed_ids = self.monitor_submissions(standard_state=1)
+        if len(failed_ids) > 0:
+            raise RuntimeError(
+                'Standard state calculation failed for one or more species')
+
+        self.batch_no += 1
+        self.acquire_batch(method='random', batch_size=self.batch_size)
+        self.DB.write_status(initialized=1)
+
+    def monitor_submissions(self, max_running_jobs=0, **kwargs):
+        WF = self.Workflow
+        completed_ids, failed_ids, running_ids =\
+            WF.check_submissions(**kwargs)
+        t0 = time.time()
+        while len(running_ids) > max_running_jobs:
+            WF.recollect()
+            temp_completed_ids, temp_failed_ids, running_ids =\
+                WF.check_submissions(**kwargs)
+            failed_ids += temp_failed_ids
+            completed_ids += temp_completed_ids
+            t = time.time() - t0
+
+            print('Status for calculations at {:.2f} min:'
+                  .format(t / 60))
+            print('  {} completed'.format(len(completed_ids)))
+            print('  {} running'.format(len(running_ids)))
+            print('  {} errored'.format(len(failed_ids)))
+
+            if temp_failed_ids:
+                print('\nOne or more jobs failed:')
+                for i in failed_ids:
+                    row = self.DB.ase_db.get(id=i)
+                    message = row.data.get('error', 'No message').split('\n')
+                    if len(message) > 1:
+                        message = message[-2]
+                    else:
+                        message = message[0]
+                    print('  Job {}:'.format(i))
+                    print('    ' + message)
+            time.sleep(self.check_frequency)
+
+        # Make sure the number or running jobs doesn't blow up
+        self.corrected_batch_size = self.batch_size - len(running_ids)
+
+        # get formation energy of completed jobs and save to db
+        self.save_formation_energies()
+
+        return failed_ids
+
     def run(self):
         """Run actice learning loop"""
 
@@ -73,36 +142,17 @@ class ActiveLearningLoop:
         self.status = self.DB.get_status()
 
         if not self.status['initialized']:
-            self.batch_no = 1
-            self.initialize()
+            self._initialize()
             WF.submit_id_batch(self.batch_ids)
-            self.DB.write_status(last_batch_no=self.batch_no)
-            self.DB.write_status(initialized=1)
         else:
             self.batch_no = self.status['last_batch_no']
 
         happy = False
         while not happy:
             # get completed calculations from WorkFlow
-            completed_ids, failed_ids, running_ids = WF.check_submissions()
-            t0 = time.time()
-            while len(running_ids) > self.batch_size // 2:
-                WF.recollect()
-                completed_ids0, failed_ids0, running_ids = WF.check_submissions()
-                completed_ids += completed_ids0
-                failed_ids += failed_ids0
-                t = time.time() - t0
-                print('{} job(s) completed in {:.2f} min'.format(len(completed_ids),
-                                                                 t / 60))
-                time.sleep(self.check_frequency)
+            self.monitor_submissions(max_running_jobs=self.batch_size // 2)
 
             self.DB.write_job_status()
-
-            # Make sure the number or running jobs doesn't blow up
-            self.corrected_batch_size = self.batch_size - len(running_ids)
-
-            # get formation energy of completed jobs and save to db
-            self.save_formation_energies()
 
             # save regenerated fingerprints to db (changes after relaxation)
             self.generate_fingerprints(completed=True)
@@ -126,9 +176,8 @@ class ActiveLearningLoop:
             self.batch_no += 1
             # submit structures with WorkFLow
             WF.submit_id_batch(self.batch_ids)
-            self.DB.write_status(last_batch_no=self.batch_no)
 
-    def test_run(self):
+    def test_run(self, acquire='random', kappa=None):
         """Use already completed calculations to test the loop """
         WF = self.Workflow
         self.status = self.DB.get_status()
@@ -143,15 +192,10 @@ class ActiveLearningLoop:
 
         while len(self.test_ids) > 0:
             self.train_ml()
-            self.acquire_batch()
 
-            self.train_ids += self.batch_ids
-            self.test_ids = [
-                t for t in self.test_ids if not t in self.train_ids]
-
-            all_ids = self.test_ids + self.train_ids
+            all_ids = list(self.test_ids) + list(self.train_ids)
             all_energies = np.array(
-                list(self.energies) + list(self.targets))
+                list(self.energies) + list(self.targets[:, 0]))
             all_uncertainties = np.array(list(self.uncertainties) +
                                          list(np.zeros_like(self.targets)))
 
@@ -160,20 +204,20 @@ class ActiveLearningLoop:
                           'energies': all_energies,
                           'vars': all_uncertainties}
 
-            self.batch_no += 1
             yield prediction
 
-    def initialize(self):
-        if not self.status['enumerated']:
-            self.enumerate_structures()
-            self.DB.write_status(enumerated=1)
-        if not self.status['fingerprinted']:
-            self.generate_fingerprints()
-            self.DB.write_status(fingerprinted=1)
+            if acquire == 'random':
+                indices = np.random.randint(len(self.test_ids),
+                                            size=self.batch_size)
+                self.batch_ids = list(np.array(self.test_ids)[indices])
+            else:
+                self.acquire_batch(method=acquire, kappa=kappa)
 
-        # Run standard states?
+            self.train_ids += self.batch_ids
+            self.test_ids = [
+                t for t in self.test_ids if not t in self.train_ids]
 
-        self.acquire_batch(method='random', batch_size=self.batch_size)
+            self.batch_no += 1
 
     def get_frac_of_systems_processed(self):
         """
@@ -194,9 +238,9 @@ class ActiveLearningLoop:
         # Upper limit on Systems/Jobs processed
         if self.stop_mode == "job_fraction_limit":
             frac_i = self.get_frac_of_systems_processed()
-            print("fraction_i: ", frac_i)
+            print("Structures processed: {:.2f} %".format(frac_i))
             if frac_i >= self.frac_jobs_limit:
-                print("HAPPY! Upper fraction of jobs procesed limit reached")
+                print("Ending Loop! Upper limit of processed jobs reached")
                 happy = True
 
         return happy
@@ -204,7 +248,7 @@ class ActiveLearningLoop:
     def enumerate_structures(self):
         # Map chemical formula to elements
 
-        stoichiometries, elements =\
+        stoichiometries, self.elements =\
             get_stoich_from_formulas(self.chemical_formulas)
 
         if self.source == 'prototypes':
@@ -215,7 +259,7 @@ class ActiveLearningLoop:
 
                 E.store_enumeration(filename=self.db_filename)
 
-            AE = AtomsEnumeration(elements, self.max_atoms)
+            AE = AtomsEnumeration(self.elements, self.max_atoms)
             AE.store_atom_enumeration(filename=self.db_filename,
                                       multithread=True)
         else:
@@ -263,11 +307,11 @@ class ActiveLearningLoop:
             row = ase_db.get(id=id)
             atoms_df = atoms_df.append({'atoms': row.toatoms()},
                                        ignore_index=True)
-            if row.get('Ef', None):
+            if row.get('Ef', None) is not None:
                 targets_df = targets_df.append({'id': id, 'Ef': row.Ef},
                                                ignore_index=True)
 
-        targets_df = targets_df.astype({'id': int})
+        targets_df = targets_df.astype({'id': int, 'Ef': float})
         FP = FingerPrint(feature_methods=feature_methods,
                          input_data=atoms_df,
                          input_index=['atoms'])
@@ -284,12 +328,17 @@ class ActiveLearningLoop:
     def save_formation_energies(self):
         ase_db = self.DB.ase_db
 
-        # Should be updated to only run over new completed ids
         for row in self.DB.ase_db.select('-Ef', relaxed=1):
             energy = row.energy
-            references = [0, 0]  # Update
-            formation_energy = (energy - sum(references)) / row.natoms
+            elements, counts = np.unique(
+                row.toatoms().symbols, return_counts=True)
+            ref_energies = []
+            for i, e in enumerate(elements):
+                ref_row = self.DB.ase_db.get(e, relaxed=1, standard_state=1)
+                energy_atom = ref_row.energy / ref_row.natoms
+                ref_energies += [counts[i] * energy_atom]
 
+            formation_energy = (energy - sum(ref_energies)) / row.natoms
             ase_db.update(id=row.id, Ef=formation_energy)
 
     def train_ml(self, model='catlearn'):
@@ -320,33 +369,60 @@ class ActiveLearningLoop:
         self.test_ids = list(np.array(self.test_ids)[index])
         self.uncertainties = predictions['uncertainty'][index]
 
-    def acquire_batch(self, kappa=1.5, method='mix', batch_size=None):
+    def acquire_batch(self, method='UCB', kappa=0.5, batch_size=None):
         if not batch_size:
             batch_size = self.corrected_batch_size
 
         if method == 'random':
             noncompleted_ids = self.DB.get_completed_structure_ids(
                 completed=False)
+            acquistision_values = np.zeros(len(noncompleted_ids))
             indices = np.random.randint(len(noncompleted_ids), size=batch_size)
             self.batch_ids = np.array(noncompleted_ids)[indices]
             return
 
-        if method == 'energy':
-            n_u = 0
+        if method == 'UCB':
+            """
+            Upper confidence bound:
+            Trade-off between low energy and high uncertainty
+            """
+            acquisition_values = self.energies - kappa * self.uncertainties
+            indices = np.argsort(acquisition_values)
+        elif method in ['optimistic', 'proximity', 'optimistic_proximity',
+                        'probability_density']:
+            AF = getattr(acquisition_functions, method)
+            acquisition_values = AF(y_best=-np.min(self.targets),
+                                    predictions=-self.energies,
+                                    uncertainty=self.uncertainties)
+
+            indices = np.argsort(acquisition_values)[::-1]
+
+        elif method in ['EI', 'PI']:
+            AF = getattr(acquisition_functions, method)
+            acquisition_values = AF(y_best=np.min(self.targets),
+                                    predictions=self.energies,
+                                    uncertainty=self.uncertainties,
+                                    objective='min'
+                                    )
+
+            indices = np.argsort(acquisition_values)[::-1]
+
         elif method == 'mix':
-            n_u = batch_size // 3
+            """
+            Choose two different batches - one targeting low energy,
+            the other targeting high uncertainty
+            """
+            n_high_u = batch_size // 3
+            n_high_e = batch_size - n_high_u
+            indices_energy = np.argsort(self.energies)
+            indices_u = np.argsort(-self.uncertainties)
+            indices = sorted(list(indices_energy[:n_high_e]) +
+                             list(indices_u[:n_high_u]))
+            acquisition_values = -self.uncertainties
 
-        n_e = batch_size - n_u
-
-        # Simple acquisition function
-        values = self.energies - kappa * self.uncertainties
-        self.acqu = values
-        indices_e = np.argsort(values)
-        indices_u = np.argsort(-self.uncertainties)
-
-        indices = list(indices_e[:n_e]) + list(indices_u[:n_u])
         self.batch_ids = list(np.array(self.test_ids)[indices])[
             :batch_size]
+        self.acquisition_values = acquisition_values
 
 
 if __name__ == "__main__":
