@@ -4,7 +4,7 @@ import bulk_enumerator as be
 from ase.io.vasp import write_vasp
 
 
-def get_classification(atoms, tolerance=1e-2):
+def get_classification(atoms, tolerance=5e-3):
     """ Get the prototype and cell parameters of an atomic structure
     in ASE Atoms format"""
 
