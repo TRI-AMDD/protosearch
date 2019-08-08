@@ -158,7 +158,7 @@ class ActiveLearningLoop:
 
             self.train_ids = self.DB.get_completed_structure_ids()
             self.test_ids = self.DB.get_completed_structure_ids(completed=0)
-            self.train_ml()
+            self.get_ml_prediction()
 
             all_ids = np.append(self.test_ids, self.train_ids)
             all_energies = np.append(self.energies, self.targets)
@@ -187,7 +187,7 @@ class ActiveLearningLoop:
             t for t in self.test_ids if not t in self.train_ids]
 
         while len(self.test_ids) > 0:
-            self.train_ml()
+            self.get_ml_prediction()
 
             all_ids = np.append(self.test_ids, self.train_ids)
             all_energies = np.append(self.energies, self.targets[:, 0])
@@ -336,7 +336,7 @@ class ActiveLearningLoop:
             formation_energy = (energy - sum(ref_energies)) / row.natoms
             ase_db.update(id=row.id, Ef=formation_energy)
 
-    def train_ml(self, model='catlearn'):
+    def get_ml_prediction(self, model='catlearn'):
         train_features = self.DB.load_dataframe(
             'fingerprint', ids=self.train_ids)
         ids_train = train_features.pop('id')
@@ -348,7 +348,6 @@ class ActiveLearningLoop:
 
         assert np.all(ids_train == ids_targets)
         assert np.all(ids_test == self.test_ids)
-
         self.targets = targets.values
 
         features, bad_indices = \
