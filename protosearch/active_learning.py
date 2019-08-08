@@ -95,12 +95,13 @@ class ActiveLearningLoop:
         self.acquire_batch(method='random', batch_size=self.batch_size)
         self.DB.write_status(initialized=1)
 
-    def monitor_submissions(self, max_running_jobs=0, **kwargs):
+    def monitor_submissions(self, **kwargs):
         WF = self.Workflow
         completed_ids, failed_ids, running_ids =\
             WF.check_submissions(**kwargs)
         t0 = time.time()
-        while len(running_ids) > max_running_jobs:
+        min_running_jobs = self.batch_size * 2
+        while len(running_ids) > min_running_jobs:
             WF.recollect()
             temp_completed_ids, temp_failed_ids, running_ids =\
                 WF.check_submissions(**kwargs)
@@ -127,10 +128,10 @@ class ActiveLearningLoop:
                     print('    ' + message)
             time.sleep(self.check_frequency)
 
-        # Make sure the number or running jobs doesn't blow up
-        self.corrected_batch_size = self.batch_size - len(running_ids)
+        # Make sure the number or running jobs stays constant
+        self.corrected_batch_size = min_running_jobs + \
+            self.batch_size - len(running_ids)
 
-        # get formation energy of completed jobs and save to db
         self.save_formation_energies()
 
         return failed_ids
@@ -149,32 +150,27 @@ class ActiveLearningLoop:
 
         happy = False
         while not happy:
-            # get completed calculations from WorkFlow
-            self.monitor_submissions(max_running_jobs=self.batch_size // 2)
-
+            self.monitor_submissions()
             self.DB.write_job_status()
-
-            # save regenerated fingerprints to db (changes after relaxation)
             self.generate_fingerprints(completed=True)
 
             happy = self.evaluate()
 
-            # retrain ML model
             self.train_ids = self.DB.get_completed_structure_ids()
             self.test_ids = self.DB.get_completed_structure_ids(completed=0)
-
             self.train_ml()
-            all_ids = self.test_ids + self.train_ids
-            all_energies = list(self.energies) + list(self.targets)
-            all_uncertainties = list(self.uncertainties) + \
-                list(np.zeros_like(self.targets))
+
+            all_ids = np.append(self.test_ids, self.train_ids)
+            all_energies = np.append(self.energies, self.targets)
+            all_uncertainties = np.append(self.uncertainties,
+                                          np.zeros_like(self.targets))
             self.DB.write_predictions(
                 self.batch_no, all_ids, all_energies, all_uncertainties)
-            # acqusition -> select next batch
+
             self.acquire_batch()
 
             self.batch_no += 1
-            # submit structures with WorkFLow
+
             WF.submit_id_batch(self.batch_ids)
 
     def test_run(self, acquire='random', kappa=None):
@@ -193,11 +189,10 @@ class ActiveLearningLoop:
         while len(self.test_ids) > 0:
             self.train_ml()
 
-            all_ids = list(self.test_ids) + list(self.train_ids)
-            all_energies = np.array(
-                list(self.energies) + list(self.targets[:, 0]))
-            all_uncertainties = np.array(list(self.uncertainties) +
-                                         list(np.zeros_like(self.targets)))
+            all_ids = np.append(self.test_ids, self.train_ids)
+            all_energies = np.append(self.energies, self.targets[:, 0])
+            all_uncertainties = np.append(self.uncertainties,
+                                          np.zeros_like(self.targets))
 
             prediction = {'batch_no': self.batch_no,
                           'ids': all_ids,
@@ -209,7 +204,7 @@ class ActiveLearningLoop:
             if acquire == 'random':
                 indices = np.random.randint(len(self.test_ids),
                                             size=self.batch_size)
-                self.batch_ids = list(np.array(self.test_ids)[indices])
+                self.batch_ids = np.array(self.test_ids)[indices]
             else:
                 self.acquire_batch(method=acquire, kappa=kappa)
 
@@ -224,11 +219,11 @@ class ActiveLearningLoop:
         Get the fraction of structures that have been processed, including
         completed as well as errored jobs.
         """
-        n_unrelaxed = self.DB.ase_db.count(relaxed=0)
+        n_nonrelaxed = self.DB.ase_db.count(relaxed=0)
         n_errored = self.DB.ase_db.count(relaxed=0, completed=-1)
         n_relaxed = self.DB.ase_db.count(relaxed=1)
 
-        frac = (n_relaxed + n_errored) / n_unrelaxed
+        frac = (n_relaxed + n_errored) / n_nonrelaxed
 
         return frac
 
@@ -356,17 +351,21 @@ class ActiveLearningLoop:
 
         self.targets = targets.values
 
-        train_features, test_features = clean_features(train_features.values,
-                                                       test_features.values)
+        features, bad_indices = \
+            clean_features({'train': train_features.values,
+                            'test': test_features.values})
 
-        Model = get_regression_model(model)(train_features, self.targets)
-        predictions = Model.predict(test_features)
+        self.train_ids = np.delete(self.train_ids, bad_indices['train'])
+        self.targets = np.delete(self.targets, bad_indices['train'])
+        self.test_ids = np.delete(self.test_ids, bad_indices['test'])
+
+        Model = get_regression_model(model)(features['train'], self.targets)
+        predictions = Model.predict(features['test'])
 
         self.energies = predictions['prediction']
         index = [i for i in range(len(self.test_ids))
                  if np.isfinite(self.energies[i])]
-        self.energies = self.energies[index, 0]
-        self.test_ids = list(np.array(self.test_ids)[index])
+        self.test_ids = np.array(self.test_ids)[index]
         self.uncertainties = predictions['uncertainty'][index]
 
     def acquire_batch(self, method='UCB', kappa=0.5, batch_size=None):
@@ -416,11 +415,11 @@ class ActiveLearningLoop:
             n_high_e = batch_size - n_high_u
             indices_energy = np.argsort(self.energies)
             indices_u = np.argsort(-self.uncertainties)
-            indices = sorted(list(indices_energy[:n_high_e]) +
-                             list(indices_u[:n_high_u]))
+            indices = np.append(indices_energy[:n_high_e],
+                                indices_u[:n_high_u])
             acquisition_values = -self.uncertainties
 
-        self.batch_ids = list(np.array(self.test_ids)[indices])[
+        self.batch_ids = np.array(self.test_ids)[indices][
             :batch_size]
         self.acquisition_values = acquisition_values
 
