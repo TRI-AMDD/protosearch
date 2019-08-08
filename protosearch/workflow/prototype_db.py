@@ -408,6 +408,18 @@ class PrototypeSQL:
         ids = [i[0] for i in ids]
         return ids
 
+    def get_initial_structure_ids(self):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        query =\
+            """select distinct id from number_key_values
+            where key='relaxed' and value=0"""
+        cur.execute(query)
+        ids = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
+
     def write_dataframe(self, table, df):
         con = self.connection or self._connect()
         self._initialize(con)
@@ -419,7 +431,8 @@ class PrototypeSQL:
             type='table' AND name='{}';""".format(table))
         table_count = cur.fetchall()[0][0]
         if table_count:
-            cur.execute('DELETE from {} where id in ({})'.format(table, id_string))
+            cur.execute(
+                'DELETE from {} where id in ({})'.format(table, id_string))
         df.to_sql(table, con=con, index=False,
                   index_label=None, if_exists='append')
 
