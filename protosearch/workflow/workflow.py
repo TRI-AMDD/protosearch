@@ -45,11 +45,12 @@ class Workflow(PrototypeSQL):
     def _collect(self):
         if self.collected:
             return
-        subprocess.call('trisync', cwd=self.basepath)
-        self.collected = True
+        self.recollect()
 
     def recollect(self):
-        subprocess.call('trisync', cwd=self.basepath)
+        for row in self.ase_db.select(completed=0, submitted=1):
+            subprocess.call('trisync', cwd=row.path)
+
         self.collected = True
 
     def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None,
@@ -65,6 +66,10 @@ class Workflow(PrototypeSQL):
                      **kwargs):
         """Submit a calculation for an atoms object"""
         prototype, parameters = get_classification(atoms)
+
+        if self.is_calculated(formula=atoms.get_chemical_formula(),
+                              p_name=prototype['p_name']):
+            return
 
         Sub = TriSubmit(atoms=atoms,
                         ncpus=ncpus,
@@ -331,17 +336,32 @@ class Workflow(PrototypeSQL):
 
         for d in self.ase_db.select(completed=-1):
             error = d.data.get('error', None)
+            failed_relax = False
+            if error is None:
+                failed_relax = True
+                error = d.data.get('error_relax', None)
+
             if not error:
                 continue
             resubmit, fail_reason = vasp_errors(error)
+            if failed_relax:
+                resubmit = True
             if not resubmit:
-                print('Job not resubmitted: {}'.format(handle))
+                if fail_reason == 'ase read':
+                    print('hep')
+                    atoms = ase.io.read(d.runpath + '/OUTCAR')
+                    calcid = self.save_completed_calculation(atoms,
+                                                             d.runpath,
+                                                             d.id)
+                else:
+                    print('Job not resubmitted: {}'.format(fail_reason))
                 continue
+            ncpus = 1
             if fail_reason == 'ncpus':
                 ncpus = d.get('ncpus', 1) * 2
-            else:
-                ncpus = 1
-
+            elif fail_reason == 'ase read':
+                atoms = read(d.runpath + '/OUTCAR.relax')
+                self.ase_db.update(id=d.id, atoms=atoms)
             p_name = d.p_name
             path = d.path + '/simulation'
 
@@ -349,7 +369,8 @@ class Workflow(PrototypeSQL):
             for param in VaspStandards.sorted_calc_parameters:
                 if d.get(param, None):
                     calc_parameters.update({param: d.get(param)})
-
+            if fail_reason == 'Symmetry error':
+                calc_parameters.update({'kgamma': True})
             self.submit_id(d.id,
                            ncpus=ncpus,
                            calc_parameters=calc_parameters)
@@ -360,13 +381,14 @@ class Workflow(PrototypeSQL):
     def get_completed_batch(self):
         ids = self.check_submissions()
 
-    def reclassify(self, tolerance=1e-2):
+    def reclassify(self, tolerance=0.5e-3):
         """Reclassify prototypes of all completed structures"""
         self._collect()
         con = self.connection or self._connect()
         self._initialize(con)
 
         for row in self.ase_db.select(relaxed=1):
+            print(row.id)
             prototype, cell_parameters = \
                 get_classification(row.toatoms())
             prototype.update(cell_parameters)
@@ -382,7 +404,8 @@ class Workflow(PrototypeSQL):
                 atoms.center()
                 calc_parameters = VaspStandards.molecule_calc_parameters
                 self.submit_atoms(atoms, batch_no=batch_no,
-                                  calc_parameters=calc_parameters, standard_state=1)
+                                  calc_parameters=calc_parameters,
+                                  standard_state=1)
             else:
                 prototype = standard_lattice[e]
                 self.submit(prototype, batch_no=batch_no, standard_state=1)
@@ -517,6 +540,16 @@ def vasp_errors(error):
         return False, 'Vasp failed'
     elif 'Vasp exited with exit code:' in error:
         return True, 'ncpus'
+    elif "local variable 'forces' referenced before assignment" in error:
+        return True, 'Symmetry error'
+    elif 'could not convert string to float' in error:
+        return False, 'ase read'
+    elif 'local variable forces referenced before assignment' in error:
+        return False, 'ase read'
+    elif 'invalid literal for float()' in error:
+        return False, 'ase read'
+    else:
+        return False, ''
 
 
 def params2dict(paramfile):

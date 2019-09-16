@@ -81,26 +81,25 @@ class ActiveLearningLoop:
 
         elements = []
         for formula in self.chemical_formulas:
-            elements += list(set(string2symbols(formula)))
-
+            elements += string2symbols(formula)
+        elements = list(set(elements))
         self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
         self.DB.write_status(last_batch_no=self.batch_no)
 
-        failed_ids = self.monitor_submissions(standard_state=1)
+        failed_ids = self.monitor_submissions(batch_size=0,
+                                              standard_state=1)
         if len(failed_ids) > 0:
             raise RuntimeError(
                 'Standard state calculation failed for one or more species')
 
-        self.batch_no += 1
-        self.acquire_batch(method='random', batch_size=self.batch_size)
         self.DB.write_status(initialized=1)
 
-    def monitor_submissions(self, **kwargs):
+    def monitor_submissions(self, batch_size, **kwargs):
         WF = self.Workflow
         completed_ids, failed_ids, running_ids =\
             WF.check_submissions(**kwargs)
         t0 = time.time()
-        min_running_jobs = self.batch_size * 2
+        min_running_jobs = batch_size
         while len(running_ids) > min_running_jobs:
             WF.recollect()
             temp_completed_ids, temp_failed_ids, running_ids =\
@@ -144,20 +143,22 @@ class ActiveLearningLoop:
 
         if not self.status['initialized']:
             self._initialize()
+            self.batch_no += 1
+            self.acquire_batch(method='random', batch_size=self.batch_size)
             WF.submit_id_batch(self.batch_ids)
         else:
             self.batch_no = self.status['last_batch_no']
 
         happy = False
         while not happy:
-            self.monitor_submissions()
+            self.monitor_submissions(batch_size=self.batch_size)
             self.DB.write_job_status()
             self.generate_fingerprints(completed=True)
 
             happy = self.evaluate()
 
             self.train_ids = self.DB.get_completed_structure_ids()
-            self.test_ids = self.DB.get_completed_structure_ids(completed=0)
+            self.test_ids = self.DB.get_uncompleted_structure_ids()
             self.get_ml_prediction()
 
             all_ids = np.append(self.test_ids, self.train_ids)
@@ -181,16 +182,20 @@ class ActiveLearningLoop:
 
         self.batch_no = 1
         self.batch_ids = []
-        self.test_ids = self.DB.get_completed_structure_ids()
-        self.train_ids = self.test_ids[:self.batch_size]
-        self.test_ids = [
-            t for t in self.test_ids if not t in self.train_ids]
+        self.test_ids = self.DB.get_initial_structure_ids(completed=True)
+        completed_ids = np.array(self.DB.get_completed_structure_ids())
+        self.train_ids = completed_ids[:self.batch_size]
+
+        completed_initial = [self.DB.ase_db.get(
+            int(t)).initial_id for t in self.train_ids]
+
+        self.test_ids = np.array([
+            t for t in self.test_ids if not t in completed_initial])
 
         while len(self.test_ids) > 0:
             self.get_ml_prediction()
-
             all_ids = np.append(self.test_ids, self.train_ids)
-            all_energies = np.append(self.energies, self.targets[:, 0])
+            all_energies = np.append(self.energies, self.targets)
             all_uncertainties = np.append(self.uncertainties,
                                           np.zeros_like(self.targets))
 
@@ -208,9 +213,12 @@ class ActiveLearningLoop:
             else:
                 self.acquire_batch(method=acquire, kappa=kappa)
 
-            self.train_ids += self.batch_ids
-            self.test_ids = [
-                t for t in self.test_ids if not t in self.train_ids]
+            completed_ids = [self.DB.ase_db.get(int(t)).final_id
+                             for t in self.batch_ids]
+            self.train_ids = np.sort(np.append(self.train_ids, completed_ids))
+
+            self.test_ids = np.sort(np.array([
+                t for t in self.test_ids if not t in self.batch_ids]))
 
             self.batch_no += 1
 
@@ -240,7 +248,7 @@ class ActiveLearningLoop:
 
         return happy
 
-    def enumerate_structures(self):
+    def enumerate_structures(self, spacegroups=None):
         # Map chemical formula to elements
 
         stoichiometries, self.elements =\
@@ -248,17 +256,31 @@ class ActiveLearningLoop:
 
         if self.source == 'prototypes':
             for stoichiometry in stoichiometries:
-                npoints = sum([int(s) for s in stoichiometry.split('_')])
-                E = Enumeration(stoichiometry, num_start=1, num_end=npoints,
-                                SG_start=1, SG_end=230, num_type='wyckoff')
-
-                E.store_enumeration(filename=self.db_filename)
+                self.enumerate_prototypes(stoichiometry,
+                                          spacegroups)
 
             AE = AtomsEnumeration(self.elements, self.max_atoms)
             AE.store_atom_enumeration(filename=self.db_filename,
-                                      multithread=True)
+                                      multithread=False)
         else:
             raise NotImplementedError  # OQMD interface not implemented
+
+    def enumerate_prototypes(self, stoichiometry, spacegroups=None):
+        npoints = sum([int(s) for s in stoichiometry.split('_')])
+
+        if spacegroups is not None:
+            SG_start_end = [[s, s] for s in spacegroups]
+        else:
+            SG_start_end = [[1, 230]]
+
+        for SG_start, SG_end in SG_start_end:
+            E = Enumeration(stoichiometry,
+                            num_start=1,
+                            num_end=npoints,
+                            SG_start=SG_start,
+                            SG_end=SG_end,
+                            num_type='wyckoff')
+            E.store_enumeration(filename=self.db_filename)
 
     def expand_structures(self, chemical_formula=None, max_atoms=None):
         """Add additional structures to enumerated space, by specifying new chemical
@@ -329,9 +351,15 @@ class ActiveLearningLoop:
                 row.toatoms().symbols, return_counts=True)
             ref_energies = []
             for i, e in enumerate(elements):
-                ref_row = self.DB.ase_db.get(e, relaxed=1, standard_state=1)
-                energy_atom = ref_row.energy / ref_row.natoms
-                ref_energies += [counts[i] * energy_atom]
+                ref_row = list(self.DB.ase_db.select(e,
+                                                     relaxed=1,
+                                                     standard_state=1,
+                                                     limit=1))
+                if len(ref_row) == 0:
+                    print('Standard state for {} not found'.format(row.formula))
+                else:
+                    energy_atom = ref_row[0].energy / ref_row[0].natoms
+                    ref_energies += [counts[i] * energy_atom]
 
             formation_energy = (energy - sum(ref_energies)) / row.natoms
             ase_db.update(id=row.id, Ef=formation_energy)
@@ -372,11 +400,10 @@ class ActiveLearningLoop:
             batch_size = self.corrected_batch_size
 
         if method == 'random':
-            noncompleted_ids = self.DB.get_completed_structure_ids(
-                completed=False)
-            acquistision_values = np.zeros(len(noncompleted_ids))
-            indices = np.random.randint(len(noncompleted_ids), size=batch_size)
-            self.batch_ids = np.array(noncompleted_ids)[indices]
+            uncompleted_ids = self.DB.get_uncompleted_structure_ids()
+            acquistision_values = np.zeros(len(uncompleted_ids))
+            indices = np.random.randint(len(uncompleted_ids), size=batch_size)
+            self.batch_ids = np.array(uncompleted_ids)[indices]
             return
 
         if method == 'UCB':

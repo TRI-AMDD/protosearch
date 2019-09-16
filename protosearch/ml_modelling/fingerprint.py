@@ -214,32 +214,34 @@ def clean_features(features, scale=False):
     remove_indices = {'train': np.array([], dtype=int),
                       'test': np.array([], dtype=int)}
     for key, feature_set in features.items():
-        if feature_set is None:
+        if feature_set is None or len(feature_set) == 0:
             continue
         bad_structure_indices = \
-            np.where(np.isfinite(feature_set).all(axis=1)==False)
+            np.where(np.isfinite(feature_set).all(axis=1) == False)
         for b in bad_structure_indices:
-            if len(np.where(np.isfinite(feature_set[b])==False)) > 1:
+            if len(np.where(np.isfinite(feature_set[b]) == False)) > 1:
                 remove_indices[key] = np.append(remove_indices[key], b)
 
         features[key] = np.delete(feature_set, remove_indices[key], axis=0)
+
     if not 'test' in features:
         features['test'] = None
 
     # Finite features
     features = clean_infinite(features['train'],
-                            features['test'])
+                              features['test'])
+
     # Clean variance
     features = clean_variance(features['train'],
                               features['test'])
 
-    #Clean skewness
+    # Clean skewness
     features = clean_skewness(features['train'],
-                              features.get('test', None),
+                              features['test'],
                               skewness=3)
 
     if scale:
         features = standardize(features['train'],
-                            features.get('test', None))
+                               features['test'])
 
     return features, remove_indices

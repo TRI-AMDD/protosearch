@@ -352,9 +352,10 @@ class PrototypeSQL:
 
     def is_calculated(self, formula, p_name):
         con = self.connection or self._connect()
-        if self.ase_db.count(formula=formula,
-                             p_name=p_name,
-                             error=0) > 0:
+        if self.ase_db.count('completed>-1',
+                             submitted=1,
+                             formula=formula,
+                             p_name=p_name) > 0:
             print('Allready calculated')
             return True
         else:
@@ -369,7 +370,7 @@ class PrototypeSQL:
         cur_batch = cur.fetchall()
         if cur_batch:
             if cur_batch[0][0]:
-                return cur_batch + 1
+                return cur_batch[0][0] + 1
             else:
                 return 0
         else:
@@ -387,34 +388,58 @@ class PrototypeSQL:
         ids = [i[0] for i in ids]
         return ids
 
-    def get_completed_structure_ids(self, completed=1):
+    def get_completed_structure_ids(self, max_energy=0):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        query = \
+            """select distinct id from number_key_values
+            where key='relaxed' and value=1
+            and id not in (SELECT distinct id from systems where energy > {})
+            order by id""".format(max_energy)
+        cur.execute(query)
+        ids = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
+
+    def get_uncompleted_structure_ids(self, unsubmitted_only=True):
+        con = self.connection or self._connect()
+        self._initialize(con)
+        cur = con.cursor()
+        if unsubmitted_only:
+            query =\
+                """SELECT distinct id from number_key_values
+                where key='submitted' and value=0 and id not in
+                (SELECT distinct value from number_key_values
+                where key='initial_id') order by id"""
+        else:
+            query =\
+                """SELECT distinct id from number_key_values
+                where key='completed' and value=0 and id not in
+                (SELECT distinct value from number_key_values
+                where key='initial_id') order by id"""
+
+        cur.execute(query)
+        ids = cur.fetchall()
+        ids = [i[0] for i in ids]
+        return ids
+
+    def get_initial_structure_ids(self, completed=False):
         con = self.connection or self._connect()
         self._initialize(con)
         cur = con.cursor()
         if completed:
             query =\
                 """select distinct id from number_key_values
-                where key='relaxed' and value=1
-                and id not in (SELECT distinct id from systems where energy > 0)
+                where key='relaxed' and value=0 and id in 
+                (select distinct id from number_key_values
+                where key='completed' and value=1)
                 order by id"""
         else:
             query =\
-                """SELECT distinct id from number_key_values
-                where key='submitted' and value=0 and id not in
-                (SELECT distinct value from number_key_values
-                where key='initial_id') order by id"""
-        cur.execute(query)
-        ids = cur.fetchall()
-        ids = [i[0] for i in ids]
-        return ids
-
-    def get_initial_structure_ids(self):
-        con = self.connection or self._connect()
-        self._initialize(con)
-        cur = con.cursor()
-        query =\
-            """select distinct id from number_key_values
-            where key='relaxed' and value=0"""
+                """select distinct id from number_key_values
+                where key='relaxed' and value=0
+                order by id"""
         cur.execute(query)
         ids = cur.fetchall()
         ids = [i[0] for i in ids]
@@ -445,7 +470,7 @@ class PrototypeSQL:
             ids = sorted(ids)
             id_str = ','.join([str(i) for i in ids])
             query += ' where id in ({})'.format(id_str)
-
+        query += ' order by id'
         df = pd.read_sql_query(query, con)
         return df
 

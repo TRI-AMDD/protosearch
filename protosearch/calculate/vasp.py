@@ -115,7 +115,8 @@ class VaspModel:
 
         modelstr = self.add_calc(modelstr)
 
-        modelstr = add_singlepoint(modelstr)
+        #modelstr = add_singlepoint(modelstr)
+        modelstr = add_relaxations(modelstr)
 
         return modelstr
 
@@ -161,7 +162,9 @@ class VaspModel:
 
         modelstr += '    )\n\ncalc.calculate(atoms)\n'
 
-        modelstr = add_singlepoint(modelstr)
+        #modelstr = add_singlepoint(modelstr)
+        modelstr = add_relaxations(modelstr)
+
         return modelstr
 
     def get_nbands(self, n_empty=5):
@@ -204,7 +207,7 @@ atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n"""\
 
 def get_poscar_from_atoms(atoms):
     poscar = io.StringIO()
-    write_vasp(filename=poscar, atoms=atoms, vasp5=True,
+    write_vasp(file=poscar, atoms=atoms, vasp5=True,
                long_format=False, direct=True)
 
     return poscar.getvalue()
@@ -238,5 +241,31 @@ if os.path.isfile('err'):
 calc.set(nsw=0)
 
 calc.calculate(atoms)
+"""
+    return modelstr
+
+
+def add_relaxations(modelstr):
+    modelstr += \
+        """
+path = sys.path[0]
+
+atoms = read('OUTCAR', :)
+
+cell_change = atoms[-1].cell - atoms[0].cell
+
+n = 1
+while not np.isclose(cell_change, 0).all():
+    for file in ['INCAR', 'OUTCAR', 'out']:
+        os.rename('{}'.format(file), '{}.relax{}'.format(file, n))
+
+    if os.path.isfile('err'):
+        os.rename('err', 'err.relax')
+
+    calc.calculate(atoms)
+
+    atoms = read('OUTCAR', :)
+    cell_change = atoms[-1].cell - atoms[0].cell
+    n += 1
 """
     return modelstr

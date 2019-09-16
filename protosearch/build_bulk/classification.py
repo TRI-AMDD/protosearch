@@ -11,12 +11,18 @@ def get_classification(atoms, tolerance=5e-3):
     b = be.bulk.BULK(tolerance=tolerance)
 
     poscar = io.StringIO()
-    write_vasp(filename=poscar, atoms=atoms, vasp5=True,
-               long_format=False, direct=True)
+
+    write_vasp(file=poscar,
+               atoms=atoms,
+               vasp5=True,
+               long_format=False,
+               direct=True)
 
     poscar = poscar.getvalue()
-
-    b.set_structure_from_file(poscar)
+    try:
+        b.set_structure_from_file(poscar)
+    except:
+        return None, None
     name = b.get_name()
     spacegroup = b.get_spacegroup()
     wyckoffs = b.get_wyckoff()
