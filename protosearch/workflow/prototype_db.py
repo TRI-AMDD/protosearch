@@ -311,7 +311,7 @@ class PrototypeSQL:
         query = ''
         for key, value in kwargs.items():
             if key == 'max_atoms':
-                query += " natom<{}".format(value)
+                query += " natom<={}".format(value)
             else:
                 query += ' {}={}'.format(key, value)
         statement = 'SELECT * from prototype'
