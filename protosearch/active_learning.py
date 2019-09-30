@@ -1,4 +1,5 @@
 import time
+import string
 import numpy as np
 import pandas as pd
 from ase.symbols import string2symbols
@@ -17,6 +18,7 @@ class ActiveLearningLoop:
 
     def __init__(self,
                  chemical_formulas,
+                 elements=None,
                  Workflow=WORKFLOW,
                  source='prototypes',
                  batch_size=10,
@@ -55,13 +57,14 @@ class ActiveLearningLoop:
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
-        self.chemical_formulas = chemical_formulas
         self.source = source
         self.batch_size = batch_size
         self.max_atoms = max_atoms
         self.check_frequency = check_frequency
         self.frac_jobs_limit = frac_jobs_limit
         self.stop_mode = stop_mode
+
+        self.set_formulas_and_elements(chemical_formulas, elements)
 
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.Workflow = Workflow(db_filename=self.db_filename)
@@ -80,8 +83,8 @@ class ActiveLearningLoop:
         self.batch_no = (self.status.get('last_batch_no', None) or 0) + 1
 
         elements = []
-        for formula in self.chemical_formulas:
-            elements += string2symbols(formula)
+        for element_list in self.elements.values():
+            elements += element_list
         elements = list(set(elements))
         self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
         self.DB.write_status(last_batch_no=self.batch_no)
@@ -93,6 +96,26 @@ class ActiveLearningLoop:
                 'Standard state calculation failed for one or more species')
 
         self.DB.write_status(initialized=1)
+
+    def set_formulas_and_elements(self, formulas, elements=None):
+        alphabet = list(string.ascii_uppercase)
+
+        if not formulas[0][0] == 'A':
+            self.stoichiometries, self.elements =\
+                get_stoich_from_formulas(formulas)
+            return
+
+        self.stoichiometries = []
+        for formula in formulas:
+            stoich = []
+            for f in formula:
+                if f.isdigit():
+                    stoich = stoich[:-1] + [f]
+                else:
+                    stoich += ['1']
+            self.stoichiometries += ['_'.join(stoich)]
+        print(self.stoichiometries)
+        self.elements = elements
 
     def monitor_submissions(self, batch_size, **kwargs):
         WF = self.Workflow
@@ -174,7 +197,7 @@ class ActiveLearningLoop:
 
             WF.submit_id_batch(self.batch_ids)
 
-    def test_run(self, acquire='random', kappa=None):
+    def test_run(self, acquire='UCB', kappa=None):
         """Use already completed calculations to test the loop """
         WF = self.Workflow
         self.status = self.DB.get_status()
@@ -183,8 +206,13 @@ class ActiveLearningLoop:
         self.batch_no = 1
         self.batch_ids = []
         self.test_ids = self.DB.get_initial_structure_ids(completed=True)
+
         completed_ids = np.array(self.DB.get_completed_structure_ids())
-        self.train_ids = completed_ids[:self.batch_size]
+
+        indices = np.random.randint(len(completed_ids),
+                                    size=self.batch_size)
+
+        self.train_ids = completed_ids[indices]
 
         completed_initial = [self.DB.ase_db.get(
             int(t)).initial_id for t in self.train_ids]
@@ -250,23 +278,20 @@ class ActiveLearningLoop:
 
     def enumerate_structures(self, spacegroups=None):
         # Map chemical formula to elements
-
-        stoichiometries, self.elements =\
-            get_stoich_from_formulas(self.chemical_formulas)
-
         if self.source == 'prototypes':
-            for stoichiometry in stoichiometries:
+            for stoichiometry in self.stoichiometries:
                 self.enumerate_prototypes(stoichiometry,
                                           spacegroups)
 
             AE = AtomsEnumeration(self.elements, self.max_atoms)
+            print('ENUMERATE ATOMS')
             AE.store_atom_enumeration(filename=self.db_filename,
                                       multithread=False)
         else:
             raise NotImplementedError  # OQMD interface not implemented
 
     def enumerate_prototypes(self, stoichiometry, spacegroups=None):
-        npoints = sum([int(s) for s in stoichiometry.split('_')])
+        npoints = self.max_atoms
 
         if spacegroups is not None:
             SG_start_end = [[s, s] for s in spacegroups]
@@ -279,7 +304,7 @@ class ActiveLearningLoop:
                             num_end=npoints,
                             SG_start=SG_start,
                             SG_end=SG_end,
-                            num_type='wyckoff')
+                            num_type='atom')
             E.store_enumeration(filename=self.db_filename)
 
     def expand_structures(self, chemical_formula=None, max_atoms=None):
@@ -367,6 +392,7 @@ class ActiveLearningLoop:
     def get_ml_prediction(self, model='catlearn'):
         train_features = self.DB.load_dataframe(
             'fingerprint', ids=self.train_ids)
+
         ids_train = train_features.pop('id')
         targets = self.DB.load_dataframe('target', ids=self.train_ids)
         ids_targets = targets.pop('id')
