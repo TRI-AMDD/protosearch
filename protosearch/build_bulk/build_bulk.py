@@ -62,7 +62,7 @@ class BuildBulk(CellParameters):
                                     primitive_cell=primitive_cell)
 
     def get_wyckoff_candidate_atoms(self, proximity=1, cell_parameters=None,
-                                    primitive_cell=True):
+                                    primitive_cell=True, return_parameters=False):
         """Returns a list of atomic structures with different wyckoff settings"""
         master_parameters = cell_parameters or {}
 
@@ -73,5 +73,8 @@ class BuildBulk(CellParameters):
         for c_p in cell_parameters:
             atoms_list += [self.construct_atoms(self.cell_parameters[0],
                                                 primitive_cell=primitive_cell)]
+
+        if return parameters:
+            return atoms_list, cell_parameters
 
         return atoms_list
