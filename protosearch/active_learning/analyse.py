@@ -3,7 +3,7 @@ import pylab as p
 import ase
 
 
-from protosearch.active_learning import ActiveLearningLoop
+from protosearch.active_learning.active_learning import ActiveLearningLoop
 from protosearch.ml_modelling.fingerprint import clean_features
 
 
@@ -300,7 +300,7 @@ class MetaAnalysis(ActiveLearningLoop):
               .format(count_changed, count_all))
 
     def plot_performance(self, verbose=False):
-        train_ids = self.DB.get_completed_structure_ids(completed=1)
+        train_ids = self.DB.get_completed_structure_ids()
         p_names = []
         energies = []
         for i in train_ids:

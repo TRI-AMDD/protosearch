@@ -477,12 +477,9 @@ class ActiveLearningLoop:
 
 
 if __name__ == "__main__":
-    from protosearch.workflow.workflow_dummy import DummyWorkflow
-
     ALL = ActiveLearningLoop(
         chemical_formulas=['Cu2O'],
         max_atoms=10,
-        # Workflow=DummyWorkflow,
         batch_size=1,
         check_frequency=0.6,
         frac_jobs_limit=0.4,
