@@ -384,7 +384,7 @@ class CellParameters(WyckoffSymmetries):
 
             fitness -= np.sum(CM[restids, ][:, restids]) / len(restids)/2
         elif np.all([z in metal_n for z in atoms.get_atomic_numbers()]):
-            fitness = sum(list(connections.values())) / len(atoms)
+            fitness = np.sum(CM) / len(atoms)
 
         return fitness/len(atoms)
 
@@ -567,6 +567,7 @@ class CellParameters(WyckoffSymmetries):
         Dm, distances = get_interatomic_distances(atoms)
         covalent_radii = np.array([cradii[n] for n in atoms.numbers])
         M = covalent_radii * np.ones([len(atoms), len(atoms)])
+
         self.min_distances = (M + M.T) * proximity
 
         # scale up or down

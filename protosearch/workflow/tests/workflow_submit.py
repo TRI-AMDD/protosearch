@@ -9,6 +9,7 @@ from ase.db import connect
 from protosearch.workflow.workflow import Workflow
 from protosearch.workflow.standard_states import StandardStates
 
+
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
         self.pwd = os.getcwd()
@@ -22,8 +23,8 @@ class WorkflowTest(unittest.TestCase):
     def test_workflow_submit(self):
         WF = Workflow()
         prototype = {'spacegroup': 221,
-                     'wyckoffs':['a', 'd'],
-                     'species':['Ru', 'O']}
+                     'wyckoffs': ['a', 'd'],
+                     'species': ['Ru', 'O']}
         WF.submit(prototype)
 
     def test_standard_states(self, elements=['K', 'Al']):
@@ -33,6 +34,7 @@ class WorkflowTest(unittest.TestCase):
     def test_job_status(self):
         WF = Workflow()
         WF.check_submissions()
+
 
 if __name__ == '__main__':
     unittest.main()

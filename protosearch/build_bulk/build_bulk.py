@@ -74,7 +74,7 @@ class BuildBulk(CellParameters):
             atoms_list += [self.construct_atoms(self.cell_parameters[0],
                                                 primitive_cell=primitive_cell)]
 
-        if return parameters:
+        if return_parameters:
             return atoms_list, cell_parameters
 
         return atoms_list

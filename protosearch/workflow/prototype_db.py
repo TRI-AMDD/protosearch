@@ -11,7 +11,6 @@ import sqlite3
 
 from protosearch.utils import get_basepath
 from protosearch.utils.standards import VaspStandards
-from protosearch.build_bulk.classification import get_classification
 
 init_commands = [
     """CREATE TABLE prototype (

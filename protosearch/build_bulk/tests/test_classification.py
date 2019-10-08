@@ -28,14 +28,14 @@ class PrototypeClassificationTest(unittest.TestCase):
                          'wyckoffs': ['c', 'e'],
                          'species': ['Cr', 'O']}
 
-        parameters_ref = 3 {'a': 5.09424496,
-                            'b': 5.09424496,
-                            'c': 13.78071749,
-                            'alpha': 90,
-                            'beta': 90,
-                            'gamma': 120,
-                            'zc0':  0.150269,
-                            'xe1': 0.300642}
+        parameters_ref = {'a': 5.09424496,
+                          'b': 5.09424496,
+                          'c': 13.78071749,
+                          'alpha': 90,
+                          'beta': 90,
+                          'gamma': 120,
+                          'zc0':  0.150269,
+                          'xe1': 0.300642}
 
         for key, value in prototype_ref.items():
             assert prototype[key] == value

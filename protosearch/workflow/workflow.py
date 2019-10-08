@@ -9,7 +9,7 @@ import ase.build
 from ase.io import read
 
 from protosearch.build_bulk.build_bulk import BuildBulk
-from protosearch.build_bulk.classification import get_classification
+from protosearch.build_bulk.classification import PrototypeClassification
 
 from protosearch.utils import get_basepath
 from protosearch.utils.standards import VaspStandards, CrystalStandards
@@ -65,7 +65,8 @@ class Workflow(PrototypeSQL):
     def submit_atoms(self, atoms, ncpus=1, batch_no=None, calc_parameters=None,
                      **kwargs):
         """Submit a calculation for an atoms object"""
-        prototype, parameters = get_classification(atoms)
+        PC = PrototypeClassification(atoms)
+        prototype, cell_parameters = PC.get_classification()
 
         if self.is_calculated(formula=atoms.get_chemical_formula(),
                               p_name=prototype['p_name']):
@@ -109,11 +110,10 @@ class Workflow(PrototypeSQL):
         BB = BuildBulk(prototype['spacegroup'],
                        prototype['wyckoffs'],
                        prototype['species'],
-                       cell_parameters=cell_parameters
                        )
 
-        atoms = BB.get_atoms_from_poscar()
-        p_name = BB.get_prototype_name()
+        atoms = BB.get_atoms(cell_parameters=cell_parameters)
+        p_name = BB.get_prototype_name(prototype['species'])
         formula = atoms.get_chemical_formula()
 
         if self.is_calculated(formula=formula,
@@ -273,7 +273,10 @@ class Workflow(PrototypeSQL):
                                    read_params=True):
 
         batch_no = self.ase_db.get(id=calcid).get('batch', None)
-        prototype, cell_parameters = get_classification(atoms)
+
+        PC = PrototypeClassification(atoms)
+        prototype, cell_parameters = PC.get_classification()
+
         key_value_pairs = self.ase_db.get(id=calcid).get('key_value_pairs', {})
 
         key_value_pairs.update({'relaxed': 1,
@@ -308,7 +311,9 @@ class Workflow(PrototypeSQL):
                            'runpath': runpath}
         param_dict = params2dict(runpath + '/param')
         atoms = ase.io.read(runpath + '/initial.POSCAR')
-        prototype, cell_parameters = get_classification(atoms)
+
+        PC = PrototypeClassification(atoms)
+        prototype, cell_parameters = PC.get_classification()
 
         key_value_pairs.update(prototype)
         key_value_pairs.update(cell_parameters)
@@ -389,8 +394,9 @@ class Workflow(PrototypeSQL):
 
         for row in self.ase_db.select(relaxed=1):
             print(row.id)
-            prototype, cell_parameters = \
-                get_classification(row.toatoms())
+
+            PC = PrototypeClassification(row.toatoms())
+            prototype, cell_parameters = PC.get_classification()
             prototype.update(cell_parameters)
             prototype = clean_key_value_pairs(prototype)
             self.ase_db.update(row.id, **prototype)
