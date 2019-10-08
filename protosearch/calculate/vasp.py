@@ -36,10 +36,12 @@ class VaspModel:
 
         self.sorted_parameters = VaspStandards.sorted_calc_parameters
         self.fixed_parameters = VaspStandards.fixed_parameters
-        self.all_parameters = self.sorted_parameters + self.fixed_parameters
         if ldau_luj:
             self.calc_parameters.update({'ldau_luj': ldau_luj})
-            self.all_parameters += VaspStandards.u_parameters
+            self.sorted_parameters = VaspStandards.sorted_calc_parameters + \
+                VaspStandards.u_parameters
+
+        self.all_parameters = self.sorted_parameters + self.fixed_parameters
 
         self.initial_magmoms = {}
         for symbol in [s for s in symbols if s in CommonCalc.magnetic_trickers]:
@@ -93,7 +95,7 @@ class VaspModel:
                 value_i = value
             else:
                 value_i = '#{}'.format(i + 1)
-            if factor:
+            if factor and value is not None:
                 modelstr += '{} = {} * {}\n'.format(param, value_i, factor)
             elif isinstance(value, str):
                 modelstr += "{} = '{}'\n".format(param, value_i)
@@ -108,13 +110,13 @@ class VaspModel:
                         modelstr += ',\n' + ' ' * (len(param) + 2)
                     i += 1
                 modelstr += '}\n'
-
             else:
                 modelstr += '{} = {}\n'.format(param, value_i)
 
         modelstr = self.add_calc(modelstr)
 
-        modelstr = add_singlepoint(modelstr)
+        #modelstr = add_singlepoint(modelstr)
+        modelstr = add_relaxations(modelstr)
 
         return modelstr
 
@@ -139,7 +141,7 @@ class VaspModel:
         for param in self.all_parameters:
             value = self.calc_parameters[param]
             factor = VaspStandards.calc_decimal_parameters.get(param, None)
-            if factor:
+            if factor and value is not None:
                 modelstr += '    {}={},\n'.format(param,
                                                   round(factor * value, 8))
             elif isinstance(value, str):
@@ -160,7 +162,9 @@ class VaspModel:
 
         modelstr += '    )\n\ncalc.calculate(atoms)\n'
 
-        modelstr = add_singlepoint(modelstr)
+        #modelstr = add_singlepoint(modelstr)
+        modelstr = add_relaxations(modelstr)
+
         return modelstr
 
     def get_nbands(self, n_empty=5):
@@ -203,7 +207,7 @@ atoms.set_initial_magnetic_moments(initial_magmom_atoms)\n"""\
 
 def get_poscar_from_atoms(atoms):
     poscar = io.StringIO()
-    write_vasp(filename=poscar, atoms=atoms, vasp5=True,
+    write_vasp(file=poscar, atoms=atoms, vasp5=True,
                long_format=False, direct=True)
 
     return poscar.getvalue()
@@ -229,11 +233,39 @@ path = sys.path[0]
 
 atoms = read('OUTCAR')
 
-for file in ['INCAR', 'OUTCAR', 'err', 'log']:
+for file in ['INCAR', 'OUTCAR', 'out']:
     os.rename('{}'.format(file), '{}.relax'.format(file))
 
+if os.path.isfile('err'):
+    os.rename('err', 'err.relax')
 calc.set(nsw=0)
 
 calc.calculate(atoms)
+"""
+    return modelstr
+
+
+def add_relaxations(modelstr):
+    modelstr += \
+        """
+path = sys.path[0]
+
+atoms = read('OUTCAR', :)
+
+cell_change = atoms[-1].cell - atoms[0].cell
+
+n = 1
+while not np.isclose(cell_change, 0).all():
+    for file in ['INCAR', 'OUTCAR', 'out']:
+        os.rename('{}'.format(file), '{}.relax{}'.format(file, n))
+
+    if os.path.isfile('err'):
+        os.rename('err', 'err.relax')
+
+    calc.calculate(atoms)
+
+    atoms = read('OUTCAR', :)
+    cell_change = atoms[-1].cell - atoms[0].cell
+    n += 1
 """
     return modelstr

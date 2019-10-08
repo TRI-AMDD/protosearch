@@ -1,14 +1,15 @@
 from ase.calculators.general import Calculator
 from ase.calculators.calculator import PropertyNotImplementedError
 
+
 class DummyCalc(Calculator):
     name = 'DummyCalc'
     implemented_properties = ['energy']
 
     def __init__(self,
-        energy_zero=None,
-        track_output=False,
-        ):
+                 energy_zero=None,
+                 track_output=False,
+                 ):
         self.energy_zero = energy_zero
         self.atoms = None
 

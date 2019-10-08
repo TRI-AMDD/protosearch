@@ -7,6 +7,7 @@ import bulk_enumerator as be
 from ase.symbols import string2symbols
 
 from protosearch.build_bulk.build_bulk import BuildBulk
+from protosearch.build_bulk.cell_parameters import CellParameters
 from protosearch.workflow.prototype_db import PrototypeSQL
 
 
@@ -70,7 +71,8 @@ class Enumeration():
     def store_enumeration(self, filename=None):
         for SG in range(self.SG_start, self.SG_end + 1):
             with PrototypeSQL(filename=filename) as DB:
-                enumerated = [DB.is_enumerated(self.stoichiometry, SG, num, self.num_type)
+                enumerated = [DB.is_enumerated(self.stoichiometry,
+                                               SG, num, self.num_type)
                               for num in range(self.num_start, self.num_end + 1)]
                 if np.all(enumerated):
                     print('spacegroup={} already enumerated'.format(SG))
@@ -184,7 +186,10 @@ class AtomsEnumeration():
                 self.store_atoms_for_prototype(prototype)
 
     def store_atoms_for_prototype(self, prototype):
-        species_lists = self.get_species_lists(prototype['species'])
+
+        species_lists = self.get_species_lists(
+            prototype['species'], prototype['permutations'])
+
         cell_parameters = prototype.get('cell_parameters', None)
         if cell_parameters:
             cell_parameters = json.load(cell_parameters)
@@ -196,13 +201,16 @@ class AtomsEnumeration():
                 if DB.ase_db.count(structure_name=structure_name) > 0:
                     continue
 
+                for row in DB.ase_db.select(p_name=prototype['name'], limit=1):
+                    cell_parameters = json.loads(row.cell_parameters)
+
             BB = BuildBulk(prototype['spacegroup'],
                            prototype['wyckoffs'],
                            species,
-                           cell_parameters=cell_parameters
                            )
-            BB.get_poscar()
-            atoms = BB.get_atoms_from_poscar()
+            atoms_list, parameters = \
+                BB.get_wyckoff_candidate_atoms(return_parameters=True)
+
             key_value_pairs = {'p_name': prototype['name'],
                                'spacegroup': prototype['spacegroup'],
                                'wyckoffs':
@@ -212,13 +220,22 @@ class AtomsEnumeration():
                                'relaxed': 0,
                                'completed': 0,
                                'submitted': 0}
-            if atoms:
-                with PrototypeSQL(filename=self.filename) as DB:
-                    DB.ase_db.write(atoms, key_value_pairs)
-            else:
-                print('no atoms?')
 
-    def get_species_lists(self, gen_species):
+            for i, atoms in enumerate(atoms_list):
+
+                key_value_pairs.update(
+                    {'cell_parameters': json.dumps(parameters[i])})
+                BB.get_atoms(cell_parameters)
+                atoms = CP.construct_atoms(fix_parameters=parameters,
+                                           primitive_cell=True)
+                if atoms:
+                    with PrototypeSQL(filename=self.filename) as DB:
+                        DB.ase_db.write(atoms, key_value_pairs)
+                else:
+                    print('no atoms?')
+            sys.exit()
+
+    def get_species_lists(self, gen_species, permutations):
         elements = self.elements
 
         alph = list(string.ascii_uppercase)
@@ -229,25 +246,45 @@ class AtomsEnumeration():
                     'D': 'A3',
                     'E': 'A4'}
 
+        N_unique = len(set(gen_species))
+
         N_species = len(list(elements.keys()))
 
-        s_list = []
-        for element in self.elements['A']:
-            s_list += [[element if g == 'A0' else g for g in gen_species]]
+        c_list = [[]]
+        for n in range(N_unique):
+            c_list_0 = c_list.copy()
+            c_list = []
+            for c in c_list_0:
+                for e in elements[alph[n]]:
+                    if not e in c:
+                        c_list += [c + [e]]
 
-        s_dict = {'0': s_list}
+        """
+        permutations_list = [p.split('_') for p in permutations]
 
-        dim = 1
-        while dim < N_species:
-            s_dict.update({str(dim): []})
-            for s_list in s_dict[str(dim - 1)]:
-                for element in self.elements[alph[dim]]:
-                    s_dict[str(dim)] += [[element if g ==
-                                          name_map[alph[dim]]
-                                          else g for g in s_list]]
-            dim += 1
+        perm0 = permutations_list[0]
+        duplicate_list = []
+        for perm in permutations_list[1:]:
+            indices = [perm.index(p) for p in perm0]            
+            for i, c in enumerate(c_list):
+                c_perm = list(np.array(c)[indices])
+                print(c, c_perm)
+                if c_perm in c_list[:i]:
+                    duplicate_list += [i]
+            
+        c_list = [c for i, c in enumerate(c_list) if i not in duplicate_list]
+        """
 
-        species_list = s_dict[str(dim-1)]
+        species_list = []
+
+        for c in c_list:
+            temp = []
+            for g in gen_species:
+                for i, cc in enumerate(c):
+                    g = g.replace(name_map[alph[i]], cc)
+                temp += [g]
+            species_list += [temp]
+
         return species_list
 
     def get_formulas(self,

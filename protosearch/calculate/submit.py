@@ -1,16 +1,17 @@
 import os
 import shlex
 import subprocess
+from ase.io import write
 
 from protosearch.utils import get_basepath
-from protosearch.build_bulk.classification import get_classification
+from protosearch.build_bulk.classification import PrototypeClassification
 from .calculator import get_calculator
 from .vasp import get_poscar_from_atoms
 
 
 class TriSubmit():
     """
-    Set up (VASP) calculations on TRI-AWS for bulk structure created with the
+    Set up (VASP) calculations on TRI-AWS for bulk structure enumerated with the
     Bulk prototype enumerator developed by A. Jain described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
@@ -51,16 +52,17 @@ class TriSubmit():
                  ):
 
         self.atoms = atoms
-        self.poscar = get_poscar_from_atoms(atoms)
 
-        prototype, self.cell_parameters = get_classification(atoms)
+        PC = PrototypeClassification(self.atoms)
+        prototype, cell_parameters = PC.get_classification()
+
         self.spacegroup = prototype['spacegroup']
         self.wyckoffs = prototype['wyckoffs']
         self.species = prototype['species']
         self.cell_param_list = []
         self.cell_value_list = []
-        for param in self.cell_parameters:
-            self.cell_value_list += [self.cell_parameters[param]]
+        for param in cell_parameters:
+            self.cell_value_list += [cell_parameters[param]]
             self.cell_param_list += [param]
 
         if basepath:
@@ -110,8 +112,7 @@ class TriSubmit():
 
     def write_poscar(self, filepath):
         """Write POSCAR to specified file"""
-        with open(filepath + '/initial.POSCAR', 'w') as f:
-            f.write(self.poscar)
+        write(filepath + '/initial.POSCAR', images=self.atoms, format='vasp')
 
     def set_execution_path(self):
         """Create a unique submission path for each structure """

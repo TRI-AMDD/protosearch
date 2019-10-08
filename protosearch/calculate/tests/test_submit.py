@@ -10,7 +10,7 @@ from protosearch.calculate.submit import TriSubmit
 class TriSubmitTest(unittest.TestCase):
     def setUp(self):
         self.bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
-        atoms = self.bb_iron.get_atoms_from_poscar()
+        atoms = self.bb_iron.get_atoms()
         self.submitter = TriSubmit(atoms,
                                    basepath_ext='tests',
                                    calc_parameters={'encut': 300,

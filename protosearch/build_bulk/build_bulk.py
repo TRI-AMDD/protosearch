@@ -1,14 +1,13 @@
 import os
-import io
-from ase.io.vasp import read_vasp
-import bulk_enumerator as be
 
 from .cell_parameters import CellParameters
 
 
 class BuildBulk(CellParameters):
     """
-    Set up bulk structures with the Bulk prototype enumerator
+    Set up bulk structures for a given prototype specification.
+
+    Prototypes can be enumeated with the Bulk prototype enumerator,
     developed by A. Jain described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
@@ -20,18 +19,12 @@ class BuildBulk(CellParameters):
         wyckoff positions, for example ['a', 'a', 'b', 'c']
     species: list
         atomic species, for example ['Fe', 'O', 'O', 'O']
-    cell_parameters: dict
-        Optional specification of cell parameters, 
-        such as {'a': 3.7, 'alpha': 75}.
-        Otherwise a fair guees for parameters will be provided by the
-        CellParameters module.
     """
 
     def __init__(self,
                  spacegroup,
                  wyckoffs,
-                 species,
-                 cell_parameters=None
+                 species
                  ):
 
         super().__init__(spacegroup=spacegroup,
@@ -41,63 +34,47 @@ class BuildBulk(CellParameters):
         assert (0 < spacegroup < 231 and isinstance(spacegroup, int)), \
             'Spacegroup must be an integer between 1 and 230'
 
-        self.poscar = None
         self.spacegroup = spacegroup
         self.wyckoffs = wyckoffs
         self.species = species
 
-        TRI_PATH = os.environ['TRI_PATH']
-        username = os.environ['TRI_USERNAME']
+    def get_atoms(self, proximity=1, cell_parameters=None, primitive_cell=True):
+        """Get one atoms object pr prototype
+
+        Parameters:
+
+        proximity: float
+            number close to 1, specifying the proximity of atoms in the 
+            hard sphere model. r_spheres = proximity * r_covalent
+
+        cell_parameters: dict
+            Optional specification of cell parameters, 
+             such as {'a': 3.7, 'alpha': 75}.
+             Otherwise a guees for parameters will be provided by the
+             CellParameters module."""
 
         master_parameters = cell_parameters or {}
-        self.cell_parameters = self.get_parameter_estimate(master_parameters)
+        cell_parameters = self.get_parameter_estimate(master_parameters,
+                                                      proximity=proximity,
+                                                      max_candidates=1)
 
-        if self.cell_parameters:
-            self.cell_param_list = []
-            self.cell_value_list = []
+        return self.construct_atoms(cell_parameters[0],
+                                    primitive_cell=primitive_cell)
 
-            for param in self.cell_parameters:
-                self.cell_value_list += [self.cell_parameters[param]]
-                self.cell_param_list += [param]
+    def get_wyckoff_candidate_atoms(self, proximity=1, cell_parameters=None,
+                                    primitive_cell=True, return_parameters=False):
+        """Returns a list of atomic structures with different wyckoff settings"""
+        master_parameters = cell_parameters or {}
 
-    def get_poscar(self):
-        """Get POSCAR structure file from the Enumerator """
-        if not self.cell_parameters:
-            return None
-        b = be.bulk.BULK()
-        b.set_spacegroup(self.spacegroup)
-        b.set_wyckoff(self.wyckoffs)
-        b.set_species(self.species)
+        cell_parameters = self.get_parameter_estimate(master_parameters,
+                                                      proximity=proximity,
+                                                      max_candidates=None)
+        atoms_list = []
+        for c_p in cell_parameters:
+            atoms_list += [self.construct_atoms(self.cell_parameters[0],
+                                                primitive_cell=primitive_cell)]
 
-        b.set_parameter_values(self.cell_param_list, self.cell_value_list)
-        self.prototype_name = b.get_name()
+        if return_parameters:
+            return atoms_list, cell_parameters
 
-        self.poscar = b.get_primitive_poscar()
-        b.delete()
-
-        return self.poscar
-
-    def get_atoms_from_poscar(self):
-        if not self.cell_parameters:
-            return None
-        if not self.poscar:
-            poscar = self.get_poscar()
-
-        atoms = read_vasp(io.StringIO(self.poscar))
-
-        return atoms
-
-    def get_prototype_name(self):
-        if self.prototype_name:
-            return self.prototype_name
-
-        b = be.bulk.BULK()
-        b.set_spacegroup(self.spacegroup)
-        b.set_wyckoff(self.wyckoffs)
-        b.set_species(self.species)
-
-        b.set_parameter_values(self.cell_param_list, self.cell_value_list)
-        self.prototype_name = b.get_name()
-        b.delete()
-
-        return self.prototype_name
+        return atoms_list

@@ -346,7 +346,7 @@ class OqmdInterface:
             "F2": {"F": 1},
             "Cl2": {"Cl": 1},
             "H2": {"H": 1},
-            }
+        }
 
         comp0 = Composition(formula0)
         comp1 = Composition(formula1)

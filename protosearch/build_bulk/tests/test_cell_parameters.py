@@ -14,72 +14,85 @@ class CellParametersTest(unittest.TestCase):
         self.tempdir = tempfile.mkdtemp()
         os.chdir(self.tempdir)
         self.reference_output = {'a': 2.8512,
-                                 'b/a': 0.890999894217854,
-                                 'c/a': 0.7806562271349045,
+                                 'b': 2.85 * 0.890999894217854,
+                                 'c': 2.85 * 0.7806562271349045,
                                  'alpha': 69.93615023959542,
                                  'beta': 88.3269216779091,
                                  'gamma': 80.00000121741787,
-                                 'xa0': -2.1469986566223507,
-                                 'ya0': -0.749693073805286,
-                                 'za0': 2.2156831161918893,
-                                 'xa1': -0.7075949700128609,
-                                 'ya1': 0.6902736084156266,
-                                 'za1': -0.3128838868072398}
+                                 'xa0':  0.012189615713195129,
+                                 'ya0': 0.914497412930739,
+                                 'za0': 0.5340268669248445,
+                                 'xa1': 0.498548108759491,
+                                 'ya1': 0.8925062992580316,
+                                 'za1': 0.9605024862250223}
 
     def tearDown(self):
         os.chdir(self.pwd)
         shutil.rmtree(self.tempdir)
 
-    def test_cell_parameters(self):
-        CP = CellParameters(1, ['a', 'a'],
-                            ['Fe', 'O'])
-        # CP = CellParameters(14,
-        #                    ['e', 'e', 'e', 'e', 'e', 'e', 'e' , 'e', 'e',
-        #                     'e', 'e', 'e', 'e', 'e', 'e', 'e'],
-        #                    ['Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se',
-        #                     'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se'])
+    def test1_cell_parameters(self):
+        CP = CellParameters(spacegroup=1,
+                            wyckoffs=['a', 'a'],
+                            species=['Fe', 'O'])
 
         t0 = time.time()
-        parameters = CP.get_parameter_estimate()
+        parameters = CP.get_parameter_estimate()[0]
         t = time.time() - t0
         print('optimized small cell in {} sec'.format(t))
 
         for key, value in self.reference_output.items():
             assert key in parameters
 
-        atoms = CP.get_atoms(parameters, primitive=True)
-
-    def test_cell_parameters_big(self):
-        CP = CellParameters(14,
-                            ['e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e',
-                             'e', 'e', 'e', 'e', 'e', 'e', 'e'],
-                            ['Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se',
-                             'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se', 'Se'])
-
-        t0 = time.time()
-        parameters = CP.get_parameter_estimate()
-        t = time.time() - t0
-        print('optimized big cell in {} sec'.format(t))
-
-        atoms = CP.get_atoms(parameters, primitive=True)
-        import ase
-        ase.visualize.view(atoms)
-
-    def test_fix_wyckoffs(self):
+    def test2_fix_wyckoffs(self):
         wyckoff_coor = self.reference_output
-        for p in ['a', 'b/a', 'c/a', 'alpha', 'beta', 'gamma']:
+        for p in ['a', 'b', 'c', 'alpha', 'beta', 'gamma']:
             del wyckoff_coor[p]
-
-        CP = CellParameters(1, ['a', 'a'],
-                            ['Fe', 'O'])
+        CP = CellParameters(spacegroup=1,
+                            wyckoffs=['a', 'a'],
+                            species=['Fe', 'O'])
 
         parameters = CP.get_parameter_estimate(
-            master_parameters=wyckoff_coor)
+            master_parameters=wyckoff_coor)[0]
 
         for key, value in wyckoff_coor.items():
-            assert value == parameters[key], '{}: {} != {}'.\
+            assert np.isclose(value,  parameters[key]), '{}: {} != {}'.\
                 format(key, value, parameters[key])
+
+    def test3_anatase(self):
+        """ Several discinct structures exists for the anatase prototype
+        with anatase corresponding to ze1=0.2.
+        Make sure several candidates are returned, including anatase.
+        """
+        CP = CellParameters(141, ['a', 'e'], ['Ti', 'O'])
+
+        parameters = CP.get_parameter_estimate(max_candidates=None)
+
+        zes = [p['ze1'] for p in parameters]
+
+        zes = [min([z, 1-z]) for z in zes]
+
+        assert len(parameters) > 3
+
+        assert np.any(np.isclose(zes, 0.2, atol=0.04))
+
+    def test4_cromium_oxide(self):
+
+        CP = CellParameters(167, ['c', 'e'], ['Cr', 'O'])
+
+        parameters = CP.get_parameter_estimate(max_candidates=None)
+
+        params = [[p['zc0'], p['xe1']] for p in parameters]
+
+        reference = [0.15, 0.3]
+
+        assert np.any(np.all(np.isclose(params, reference, atol=0.05), axis=1))
 
 
 if __name__ == '__main__':
+
+    # CP = CellParametersTest()
+    # CP.test3_anatase()
+    # CP.setUp()
+    # CP.test4_cromium_oxide()
+    # CP.test2_fix_wyckoffs()
     unittest.main()

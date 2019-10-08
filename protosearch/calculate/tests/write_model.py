@@ -30,6 +30,6 @@ class TriSubmitTest(unittest.TestCase):
         with open('model_clean_source.py', 'w') as f:
             f.write(modelstr)
 
-        
+
 if __name__ == '__main__':
     unittest.main()

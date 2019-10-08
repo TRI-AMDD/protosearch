@@ -1,10 +1,9 @@
 import sys
 import copy
-
+import numpy as np
 import pandas as pd
 
 from catlearn.fingerprint.voro import VoronoiFingerprintGenerator
-
 from catlearn.preprocess.clean_data import (
     clean_infinite,
     clean_variance,
@@ -211,23 +210,38 @@ class VoronoiFingerprint:
         self.features = self.Voro_inst.generate()
 
 
-def clean_features(train_features, test_features, scale=False):
-    # get finite features
-    output = clean_infinite(train_features,
-                            test=test_features)
+def clean_features(features, scale=False):
+    remove_indices = {'train': np.array([], dtype=int),
+                      'test': np.array([], dtype=int)}
+    for key, feature_set in features.items():
+        if feature_set is None or len(feature_set) == 0:
+            continue
+        bad_structure_indices = \
+            np.where(np.isfinite(feature_set).all(axis=1) == False)
+        for b in bad_structure_indices:
+            if len(np.where(np.isfinite(feature_set[b]) == False)) > 1:
+                remove_indices[key] = np.append(remove_indices[key], b)
+
+        features[key] = np.delete(feature_set, remove_indices[key], axis=0)
+
+    if not 'test' in features:
+        features['test'] = None
+
+    # Finite features
+    features = clean_infinite(features['train'],
+                              features['test'])
+
     # Clean variance
-    output = clean_variance(output['train'],
-                            output['test'])
-    # Clean infinite
-    output = clean_infinite(output['train'],
-                            output['test'])
+    features = clean_variance(features['train'],
+                              features['test'])
 
     # Clean skewness
-    output = clean_skewness(output['train'],
-                            output['test'])
+    features = clean_skewness(features['train'],
+                              features['test'],
+                              skewness=3)
 
     if scale:
-        output = standardize(output['train'],
-                             output['test'])
+        features = standardize(features['train'],
+                               features['test'])
 
-    return output['train'], output['test']
+    return features, remove_indices
