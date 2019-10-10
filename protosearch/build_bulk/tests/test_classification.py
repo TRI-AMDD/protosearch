@@ -159,7 +159,10 @@ class PrototypeClassificationTest(unittest.TestCase):
 
 if __name__ == '__main__':
     #P = PrototypeClassificationTest()
-    # P.test1_manganese_oxide()
-    # P.test4_nickel_oxide()
-    # P.test5_ternary_alloy()
+    #P.test1_cromium_oxide()
+    #P.test2_anatase()
+    #P.test3_manganese_oxide()
+    #P.test4_nickel_oxide()
+    #P.test5_ternary_alloy()
+
     unittest.main()
