@@ -1,7 +1,7 @@
 import numpy as np
 from ase.spacegroup import get_spacegroup
 
-from .wyckoff_symmetries import WyckoffSymmetries
+from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
 
 
 class PrototypeClassification(WyckoffSymmetries):
@@ -30,6 +30,7 @@ class PrototypeClassification(WyckoffSymmetries):
 
         sites, kinds = self.Spacegroup.equivalent_sites(unique_sites,
                                                         onduplicates='replace')
+
         count_sites = []
         for i in range(len(unique_sites)):
             count_sites += [kinds.count(i)]
@@ -46,26 +47,29 @@ class PrototypeClassification(WyckoffSymmetries):
                 c = w_sym[:, 3]
 
                 M_inv, dim_x, dim_y = self.get_inverse_wyckoff_matrix(M)
-                for i, rp in enumerate(unique_sites):
+                for i, position in enumerate(unique_sites):
+                    c_position = wrap_coordinate(position, plane=0)
                     if i in taken_sites:
                         continue
                     if not count_sites[i] == m:
                         continue
 
-                    r_vec = (rp - c)[dim_x]
+                    r_vec = (position - c)[dim_x]
+                    r_vec = wrap_coordinate(r_vec, plane=0)
 
-                    w00 = np.dot(r_vec, M_inv.T)
+                    w_position = np.zeros([3])
+                    w_position[dim_y] = np.dot(r_vec, M_inv.T)
 
-                    w0 = np.zeros([3])
-                    w0[dim_y] = w00
+                    test_position = np.dot(w_position, M.T) + c
+                    test_position = wrap_coordinate(test_position, plane=0)
 
-                    rp0 = np.dot(w0, M.T) + c
-                    rp0 = [r-1 if r >= 1 else r+1 if r < 0 else r for r in rp0]
-                    if np.all(np.isclose(rp, rp0)):
+                    if np.all(np.isclose(test_position, c_position)):
                         self.wyckoffs += [w]
                         self.species += [symbols[i]]
                         taken_sites += [i]
                         break
+        if not len(taken_sites) == len(unique_sites):
+            print('Some sites where not identified')
 
     def get_spacegroup(self):
         return self.spacegroup
