@@ -113,12 +113,8 @@ class Workflow(PrototypeSQL):
                        )
 
         atoms = BB.get_atoms(cell_parameters=cell_parameters)
-        p_name = BB.get_prototype_name(prototype['species'])
+        p_name = BB.p_name
         formula = atoms.get_chemical_formula()
-
-        if self.is_calculated(formula=formula,
-                              p_name=p_name):
-            return
 
         Sub = TriSubmit(atoms=atoms,
                         ncpus=ncpus,
@@ -127,7 +123,7 @@ class Workflow(PrototypeSQL):
 
         Sub.submit_calculation()
 
-        key_value_pairs = {'p_name': BB.prototype_name,
+        key_value_pairs = {'p_name': p_name,
                            'path': Sub.excpath,
                            'spacegroup': BB.spacegroup,
                            'wyckoffs': json.dumps(BB.wyckoffs),
@@ -183,8 +179,6 @@ class Workflow(PrototypeSQL):
                         ncpus=ncpus,
                         calc_parameters=calc_parameters,
                         basepath=self.basepath)
-        if not Sub.poscar:
-            return
         Sub.submit_calculation()
 
         key_value_pairs = {'path': Sub.excpath,
