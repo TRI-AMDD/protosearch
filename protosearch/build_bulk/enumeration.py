@@ -1,6 +1,7 @@
 import sys
 import string
 import json
+import time
 import numpy as np
 from pathos.multiprocessing import ProcessingPool as Pool
 import bulk_enumerator as be
@@ -9,6 +10,7 @@ from ase.symbols import string2symbols
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.build_bulk.cell_parameters import CellParameters
 from protosearch.workflow.prototype_db import PrototypeSQL
+from .fitness_function import get_covalent_density, get_fitness
 
 
 class Enumeration():
@@ -75,7 +77,9 @@ class Enumeration():
                                                SG, num, self.num_type)
                               for num in range(self.num_start, self.num_end + 1)]
                 if np.all(enumerated):
-                    print('spacegroup={} already enumerated'.format(SG))
+                    print('spacegroup={} already enumerated for n_{}={}:{}'\
+                          .format(SG,self.num_type,
+                                  self.num_start, self.num_end))
                     continue
             E = be.enumerator.ENUMERATOR()
             try:
@@ -143,9 +147,11 @@ class AtomsEnumeration():
 
     def __init__(self,
                  elements,
-                 max_atoms=None):
+                 max_atoms=None,
+                 spacegroups=None):
         self.elements = elements
         self.max_atoms = max_atoms
+        self.spacegroups = spacegroups or list(range(1,231))
 
         for key, value in self.elements.items():
             self.elements[key] = map_elements(value)
@@ -156,14 +162,13 @@ class AtomsEnumeration():
         DB._connect()
         N0 = DB.ase_db.count()
 
-        if self.max_atoms:
-            prototypes = DB.select(max_atoms=self.max_atoms)
-        else:
-            prototypes = DB.select()
+        prototypes = DB.select(max_atoms=self.max_atoms,
+                               spacegroups=self.spacegroups)
         Nprot = len(prototypes)
+
         pool = Pool()
 
-        import time
+
         t0 = time.time()
         if multithread:
             res = pool.amap(self.store_atoms_for_prototype, prototypes)
@@ -185,7 +190,7 @@ class AtomsEnumeration():
             for prototype in prototypes:
                 self.store_atoms_for_prototype(prototype)
 
-    def store_atoms_for_prototype(self, prototype):
+    def store_atoms_for_prototype(self, prototype, max_candidates=3):
 
         species_lists = self.get_species_lists(
             prototype['species'], prototype['permutations'])
@@ -209,7 +214,10 @@ class AtomsEnumeration():
                            species,
                            )
             atoms_list, parameters = \
-                BB.get_wyckoff_candidate_atoms(return_parameters=True)
+                BB.get_wyckoff_candidate_atoms(proximity=1,
+                                               primitive_cell=True,
+                                               return_parameters=True,
+                                               max_candidates=max_candidates)
 
             key_value_pairs = {'p_name': prototype['name'],
                                'spacegroup': prototype['spacegroup'],
@@ -222,18 +230,19 @@ class AtomsEnumeration():
                                'submitted': 0}
 
             for i, atoms in enumerate(atoms_list):
-
+                atoms.info.pop('spacegroup')
+                key_value_pairs.update(atoms.info)
                 key_value_pairs.update(
                     {'cell_parameters': json.dumps(parameters[i])})
-                BB.get_atoms(cell_parameters)
-                atoms = CP.construct_atoms(fix_parameters=parameters,
-                                           primitive_cell=True)
-                if atoms:
-                    with PrototypeSQL(filename=self.filename) as DB:
-                        DB.ase_db.write(atoms, key_value_pairs)
-                else:
-                    print('no atoms?')
-            sys.exit()
+
+                fitness = get_fitness(atoms)
+                apf = get_covalent_density(atoms)
+
+                key_value_pairs.update({'fitness': fitness,
+                                        'apf': apf})
+
+                with PrototypeSQL(filename=self.filename) as DB:
+                    DB.ase_db.write(atoms, key_value_pairs)
 
     def get_species_lists(self, gen_species, permutations):
         elements = self.elements
