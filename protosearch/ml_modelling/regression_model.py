@@ -26,19 +26,26 @@ class CatLearnGP:
 
         self.features = features
         self.targets = targets
+
         kernel_list = [{'type': kernel_type,
                         'width': kernel_width,
                         'scaling': kernel_scaling,
                         'dimension': kernel_dimension}]
+
+        kernel_list += [{'type': 'noise_multi',
+                         'hyperparameters': [0.005, 0.0005],
+                         'bounds': ((0.001, 0.005),
+                                    (0.0005, 0.002),)}]
 
         self.GP = GaussianProcess(
             train_fp=features,
             train_target=targets,
             kernel_list=kernel_list,
             regularization=regularization,
-            optimize_hyperparameters=True,
-            scale_data=True,
+            optimize_hyperparameters=optimize_hyperparameters,
+            scale_data=scale_data
         )
+        #print('hyperparam:', self.GP.theta_opt)
 
     def predict(self, test_features, uncertainty=True):
         prediction = self.GP.predict(test_features,
