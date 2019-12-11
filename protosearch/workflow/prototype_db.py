@@ -309,13 +309,22 @@ class PrototypeSQL:
 
         query = ''
         for key, value in kwargs.items():
+            if value is None:
+                continue
             if key == 'max_atoms':
-                query += " natom<={}".format(value)
+                query += "natom<={}".format(value)
+            elif key == 'spacegroups':
+                if len(query) > 0:
+                    query += ' and'
+                value = [str(v) for v in value]
+                sg_str = '(' + ','.join(value) + ')'
+                query += " spacegroup in {}".format(sg_str)
             else:
                 query += ' {}={}'.format(key, value)
         statement = 'SELECT * from prototype'
         if query:
             statement += ' where {}'.format(query)
+        print(statement)
         cur.execute(statement)
         data = cur.fetchall()
 
@@ -354,6 +363,16 @@ class PrototypeSQL:
         if self.ase_db.count('completed>-1',
                              submitted=1,
                              formula=formula,
+                             p_name=p_name) > 0:
+            print('Allready calculated')
+            return True
+        else:
+            return False
+
+    def is_calculated_id(self, id):
+        con = self.connection or self._connect()
+        if self.ase_db.count('completed>-1',
+                             id=id,
                              p_name=p_name) > 0:
             print('Allready calculated')
             return True
