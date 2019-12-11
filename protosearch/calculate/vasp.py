@@ -115,7 +115,7 @@ class VaspModel:
 
         modelstr = self.add_calc(modelstr)
 
-        #modelstr = add_singlepoint(modelstr)
+        modelstr = add_singlepoint(modelstr)
         modelstr = add_relaxations(modelstr)
 
         return modelstr
@@ -218,6 +218,7 @@ def get_model_header():
         """#!/usr/bin/env python
 import os
 import sys
+import numpy as np
 from ase.io import read
 from ase.calculators.vasp import Vasp
 
@@ -250,21 +251,22 @@ def add_relaxations(modelstr):
         """
 path = sys.path[0]
 
-atoms = read('OUTCAR', :)
+atoms = read('OUTCAR', ':')
 
 cell_change = atoms[-1].cell - atoms[0].cell
 
 n = 1
 while not np.isclose(cell_change, 0).all():
     for file in ['INCAR', 'OUTCAR', 'out']:
-        os.rename('{}'.format(file), '{}.relax{}'.format(file, n))
+        if os.path.isfile(file):
+            os.rename('{}'.format(file), '{}.relax{}'.format(file, n))
 
     if os.path.isfile('err'):
         os.rename('err', 'err.relax')
 
-    calc.calculate(atoms)
+    calc.calculate(atoms[-1])
 
-    atoms = read('OUTCAR', :)
+    atoms = read('OUTCAR', ':')
     cell_change = atoms[-1].cell - atoms[0].cell
     n += 1
 """
