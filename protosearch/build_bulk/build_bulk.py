@@ -54,24 +54,30 @@ class BuildBulk(CellParameters):
              CellParameters module."""
 
         master_parameters = cell_parameters or {}
-        cell_parameters = self.get_parameter_estimate(master_parameters,
+        cell_parameters = self.get_parameter_estimate(master_parameters=master_parameters,
                                                       proximity=proximity,
                                                       max_candidates=1)
 
         return self.construct_atoms(cell_parameters[0],
                                     primitive_cell=primitive_cell)
 
-    def get_wyckoff_candidate_atoms(self, proximity=1, cell_parameters=None,
-                                    primitive_cell=True, return_parameters=False):
+    def get_wyckoff_candidate_atoms(self,
+                                    proximity=1,
+                                    cell_parameters=None,
+                                    primitive_cell=True,
+                                    return_parameters=False,
+                                    max_candidates=None):
         """Returns a list of atomic structures with different wyckoff settings"""
         master_parameters = cell_parameters or {}
 
-        cell_parameters = self.get_parameter_estimate(master_parameters,
-                                                      proximity=proximity,
-                                                      max_candidates=None)
+        cell_parameters = \
+            self.get_parameter_estimate(master_parameters=master_parameters,
+                                        proximity=proximity,
+                                        max_candidates=max_candidates)
+
         atoms_list = []
         for c_p in cell_parameters:
-            atoms_list += [self.construct_atoms(self.cell_parameters[0],
+            atoms_list += [self.construct_atoms(c_p,
                                                 primitive_cell=primitive_cell)]
 
         if return_parameters:
