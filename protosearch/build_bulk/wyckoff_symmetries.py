@@ -27,7 +27,7 @@ crystal_class_coordinates = {'P': [[0, 0, 0]],
                                    [2/3, 1/3, 1/3],
                                    [1/3, 2/3, 2/3]]}
 
-alphabet = list(string.ascii_lowercase)
+alphabet = list(string.ascii_lowercase) + ['A', 'B', 'C', 'D']
 
 
 class WyckoffSymmetries:
@@ -94,6 +94,16 @@ class WyckoffSymmetries:
                                 wyckoff_array, new_arr, axis=0)
                 if position:
                     self.wyckoff_symmetries.update({position: wyckoff_array})
+
+    def get_free_wyckoffs(self):
+        free_wyckoffs = []
+        for w_letter in sorted(self.wyckoff_symmetries.keys()):
+            w_array = self.wyckoff_symmetries[w_letter][0]
+            M = w_array[:, :3]
+            if not np.all(M == np.zeros([3, 3])):
+                free_wyckoffs += [w_letter]
+
+        return free_wyckoffs
 
     def set_wyckoff_mapping(self):
         # Name of coordinate variables (Enumerator consistent)
@@ -162,8 +172,8 @@ class WyckoffSymmetries:
                 break
 
         p_name = ''
-        for i in np.argsort(symbol_count):
-            p_name += alphabet[i]
+        for ii, i in enumerate(np.argsort(symbol_count)):
+            p_name += alphabet[ii]
             factor = symbol_count[i] // n
             if factor > 1:
                 p_name += str(factor)
@@ -239,7 +249,6 @@ class WyckoffSymmetries:
         cell = atoms.cell
         cell_parameters = {}
 
-        # self.get_free_wyckoff_parameters()
         parameters = cell_to_cellpar(cell)
 
         for i, param in enumerate(['a', 'b', 'c',
@@ -251,44 +260,64 @@ class WyckoffSymmetries:
             return cell_parameters
 
         dir_map = ['x', 'y', 'z']
+
         relative_positions = np.dot(np.linalg.inv(
             cell.T), atoms.positions.T).T
 
-        for i, aw in enumerate(self.atoms_wyckoffs):
-            if aw == self.atoms_wyckoffs[i-1]:
-                continue
+        unique_atoms_w, indices = np.unique(self.atoms_wyckoffs,
+                                            return_index=True)
 
-            for d in self.w_free_dir[aw]:
-                w_p_name = dir_map[d] + aw
-                if w_p_name in cell_parameters:
+        for ai in indices:
+            if not self.free_atoms[ai]:
+                continue
+            aw = self.atoms_wyckoffs[ai]
+            position = relative_positions[ai]
+            w_position = self.get_parameter_from_position(position, aw[0])
+            for i, w in enumerate(w_position):
+                if np.isclose(w, 0):
                     continue
-                position = relative_positions[i]
-                position = self.get_parameter_from_position(position, aw[0])
-                cell_parameters.update({w_p_name: position[d]})
+                w_p_name = dir_map[i] + aw
+                cell_parameters.update({w_p_name: w})
+
         return cell_parameters
 
     def get_parameter_from_position(self, position, w_position):
-
-        c_position = wrap_coordinate(position, plane=0)
-
         for w_sym in self.wyckoff_symmetries[w_position]:
+            match, w_pos = self.is_position_wyckoff(position, w_sym,
+                                                    return_coor=True)
+            if match:
+                return wrap_coordinate(w_pos, 0.5)
+        print('position not found: {}:{}'.format(position, w_position))
 
-            M = w_sym[:, :3]
-            c = w_sym[:, 3]
-
-            M_inv, dim_x, dim_y = self.get_inverse_wyckoff_matrix(M)
-            r_vec = (c_position - c)[dim_x]
-            r_vec = wrap_coordinate(r_vec, plane=0)
+    def is_position_wyckoff(self, position, w_sym, return_coor=False, tol=1e-3):
+        M = w_sym[:, :3]
+        c = w_sym[:, 3]
+        M_inv, dim_x, dim_y = self.get_inverse_wyckoff_matrix(M)
+        r_vec = (position - c)[dim_x]
+        for plane in [0, 0.5, -0.5]:
+            r_vec_temp = wrap_coordinate(r_vec, plane=plane)
 
             w_position = np.zeros([3])
-            w_position[dim_y] = np.dot(r_vec, M_inv.T)
+            w_position[dim_y] = np.dot(r_vec_temp, M_inv.T)
 
             test_position = np.dot(w_position, M.T) + c
-            test_position = wrap_coordinate(test_position, plane=0)
+            test_position = wrap_coordinate(test_position,
+                                            plane=plane)
 
-            if np.all(np.isclose(test_position, c_position)):
-                return wrap_coordinate(w_position)
-        print('position not found: {}:{}'.format(position, w_position))
+            c_position = wrap_coordinate(position,
+                                         plane=plane)
+            if np.all(np.isclose(test_position, c_position, rtol=tol)):
+                # print('OK')
+                if return_coor:
+                    return True, w_position
+                else:
+                    return True
+            # else:
+            #    print('No')
+        if return_coor:
+            return False, None
+        else:
+            return False
 
 
 def wrap_coordinate(coor, plane=0.5):
@@ -296,8 +325,10 @@ def wrap_coordinate(coor, plane=0.5):
 
     offset = plane + 0.5
 
-    coor = [c if np.isclose(c, offset) else -c if np.isclose(-c, offset)
+    coor = [c - 1 if np.isclose(c, offset) else -c if np.isclose(-c, offset)
             else c - 1 if c > offset else c + 1 if c < offset-1 else c for c in coor]
+
+    coor = [0 if c == -1 else 0 if c == 1 else c for c in coor]
 
     return coor
 
@@ -320,6 +351,7 @@ def get_wyckoff_letters(spacegroups):
                         continue
                     if line.split(' ')[1] in alphabet:
                         position, site_symmetry = line.split(' ')[1:3]
-                        spacegroup_letters[-1] += [position]
+                        if not position in spacegroup_letters[-1]:
+                            spacegroup_letters[-1] += [position]
 
     return spacegroups, spacegroup_letters
