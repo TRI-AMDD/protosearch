@@ -22,10 +22,15 @@ class ActiveLearningLoop:
                  Workflow=WORKFLOW,
                  source='prototypes',
                  batch_size=10,
+                 min_atoms=None,
                  max_atoms=None,
+                 min_wyckoff=None,
+                 max_wyckoff=None,
+                 enumeration_type='wyckoff',
                  check_frequency=60.,
                  frac_jobs_limit=0.7,
                  stop_mode="job_fraction_limit",
+                 spacegroups=None
                  ):
         """
         Module to run active learning loop
@@ -59,10 +64,15 @@ class ActiveLearningLoop:
             chemical_formulas = [chemical_formulas]
         self.source = source
         self.batch_size = batch_size
+        self.min_atoms = min_atoms
         self.max_atoms = max_atoms
+        self.min_wyckoff = min_wyckoff
+        self.max_wyckoff = max_wyckoff
+        self.enumeration_type = enumeration_type
         self.check_frequency = check_frequency
         self.frac_jobs_limit = frac_jobs_limit
         self.stop_mode = stop_mode
+        self.spacegroups = spacegroups
 
         self.set_formulas_and_elements(chemical_formulas, elements)
 
@@ -74,7 +84,7 @@ class ActiveLearningLoop:
 
     def _initialize(self):
         if not self.status['enumerated']:
-            self.enumerate_structures()
+            self.enumerate_structures(self.spacegroups)
             self.DB.write_status(enumerated=1)
         if not self.status['fingerprinted']:
             self.generate_fingerprints()
@@ -86,7 +96,7 @@ class ActiveLearningLoop:
         for element_list in self.elements.values():
             elements += element_list
         elements = list(set(elements))
-        self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
+        #self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
         self.DB.write_status(last_batch_no=self.batch_no)
 
         failed_ids = self.monitor_submissions(batch_size=0,
@@ -280,31 +290,40 @@ class ActiveLearningLoop:
         # Map chemical formula to elements
         if self.source == 'prototypes':
             for stoichiometry in self.stoichiometries:
+                print(stoichiometry)
                 self.enumerate_prototypes(stoichiometry,
                                           spacegroups)
 
-            AE = AtomsEnumeration(self.elements, self.max_atoms)
+            AE = AtomsEnumeration(self.elements,
+                                  self.max_atoms,
+                                  self.spacegroups)
             print('ENUMERATE ATOMS')
             AE.store_atom_enumeration(filename=self.db_filename,
                                       multithread=False)
         else:
             raise NotImplementedError  # OQMD interface not implemented
 
-    def enumerate_prototypes(self, stoichiometry, spacegroups=None):
-        npoints = self.max_atoms
-
+    def enumerate_prototypes(self, stoichiometry, spacegroups=None,
+                             num_type='wyckoff'):
         if spacegroups is not None:
             SG_start_end = [[s, s] for s in spacegroups]
         else:
             SG_start_end = [[1, 230]]
 
+        if self.enumeration_type == 'wyckoff':
+            num_min = self.min_wyckoff
+            num_max = self.max_wyckoff
+        else:
+            num_min = self.min_atoms
+            num_max = self.max_atoms
+
         for SG_start, SG_end in SG_start_end:
             E = Enumeration(stoichiometry,
-                            num_start=1,
-                            num_end=npoints,
+                            num_start=num_min,
+                            num_end=num_max,
                             SG_start=SG_start,
                             SG_end=SG_end,
-                            num_type='atom')
+                            num_type=self.enumeration_type)
             E.store_enumeration(filename=self.db_filename)
 
     def expand_structures(self, chemical_formula=None, max_atoms=None):
@@ -382,6 +401,8 @@ class ActiveLearningLoop:
                                                      limit=1))
                 if len(ref_row) == 0:
                     print('Standard state for {} not found'.format(row.formula))
+                    if e == 'O':
+                        ref_energies += [counts[i] * 4.66]
                 else:
                     energy_atom = ref_row[0].energy / ref_row[0].natoms
                     ref_energies += [counts[i] * energy_atom]
@@ -412,7 +433,8 @@ class ActiveLearningLoop:
         self.targets = np.delete(self.targets, bad_indices['train'])
         self.test_ids = np.delete(self.test_ids, bad_indices['test'])
 
-        Model = get_regression_model(model)(features['train'], self.targets)
+        Model = get_regression_model(model)(features['train'],
+                                            self.targets)
         predictions = Model.predict(features['test'])
 
         self.energies = predictions['prediction']
