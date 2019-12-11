@@ -1,21 +1,50 @@
+import sys
 import numpy as np
-from ase.spacegroup import get_spacegroup
+from spglib import get_symmetry_dataset
+from ase import Atoms
+from ase.spacegroup import Spacegroup
+from ase.build import cut
+
 
 from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
 
 
 class PrototypeClassification(WyckoffSymmetries):
-    """Prototype classification of atomic structure in ASE Atoms formar"""
+    """Prototype classification of atomic structure in ASE Atoms format"""
 
-    def __init__(self, atoms):
-        self.atoms = atoms
-        self.Spacegroup = get_spacegroup(self.atoms)
-        self.spacegroup = self.Spacegroup.no
+    def __init__(self, atoms, tolerance=1e-3):
+
+        self.spglibdata = get_symmetry_dataset((atoms.get_cell(),
+                                                atoms.get_scaled_positions(),
+                                                atoms.get_atomic_numbers()),
+                                               symprec=tolerance)
+        self.tolerance = tolerance
+
+        self.spacegroup = self.spglibdata['number']
+        self.Spacegroup = Spacegroup(self.spacegroup)
+        self.atoms = self.get_conventional_atoms(atoms)
 
         super().__init__(spacegroup=self.spacegroup)
 
         self.set_wyckoff_species()
-        self.set_wyckoff_mapping()
+        WyckoffSymmetries.wyckoffs = self.wyckoffs
+        WyckoffSymmetries.species = self.species
+
+    def get_conventional_atoms(self, atoms):
+        """Transform from primitive to conventional cell"""
+
+        std_cell = self.spglibdata['std_lattice']
+        positions = self.spglibdata['std_positions']
+        numbers = self.spglibdata['std_types']
+
+        atoms = Atoms(numbers=numbers,
+                      cell=std_cell,
+                      pbc=True)
+
+        atoms.set_scaled_positions(positions)
+        atoms.wrap()
+
+        return atoms
 
     def set_wyckoff_species(self):
         self.wyckoffs = []
@@ -26,50 +55,55 @@ class PrototypeClassification(WyckoffSymmetries):
 
         relative_positions = np.round(relative_positions, 10)
 
-        unique_sites = self.Spacegroup.unique_sites(relative_positions)
+        normalized_sites = \
+            self.Spacegroup.symmetry_normalised_sites(
+                np.array(relative_positions,
+                         ndmin=2))
 
-        sites, kinds = self.Spacegroup.equivalent_sites(unique_sites,
-                                                        onduplicates='replace')
+        equivalent_sites = []
+        for i, site in enumerate(normalized_sites):
+            indices = np.all(np.isclose(site, normalized_sites[:i+1],
+                                        rtol=self.tolerance), axis=1)
+            index = np.min(np.where(indices)[0])
+            equivalent_sites += [index]
 
-        count_sites = []
-        for i in range(len(unique_sites)):
-            count_sites += [kinds.count(i)]
+        unique_site_indices = list(set(equivalent_sites))
 
-        symbols = [a.symbol for i, a in enumerate(self.atoms)
-                   if np.any(np.all(relative_positions[i] == unique_sites, axis=1))]
+        unique_sites = normalized_sites[unique_site_indices]
+        count_sites = [list(equivalent_sites).count(i)
+                       for i in unique_site_indices]
 
-        taken_sites = []
+        symbols = self.atoms[unique_site_indices].get_chemical_symbols()
 
-        for w in sorted(self.wyckoff_symmetries.keys()):
-            m = self.wyckoff_multiplicities[w]
-            for w_sym in self.wyckoff_symmetries[w]:
-                M = w_sym[:, :3]
-                c = w_sym[:, 3]
-
-                M_inv, dim_x, dim_y = self.get_inverse_wyckoff_matrix(M)
-                for i, position in enumerate(unique_sites):
-                    c_position = wrap_coordinate(position, plane=0)
-                    if i in taken_sites:
-                        continue
-                    if not count_sites[i] == m:
-                        continue
-
-                    r_vec = (position - c)[dim_x]
-                    r_vec = wrap_coordinate(r_vec, plane=0)
-
-                    w_position = np.zeros([3])
-                    w_position[dim_y] = np.dot(r_vec, M_inv.T)
-
-                    test_position = np.dot(w_position, M.T) + c
-                    test_position = wrap_coordinate(test_position, plane=0)
-
-                    if np.all(np.isclose(test_position, c_position)):
+        for i, position in enumerate(unique_sites):
+            found = False
+            for w in sorted(self.wyckoff_symmetries.keys()):
+                m = self.wyckoff_multiplicities[w]
+                if not count_sites[i] == m:
+                    continue
+                for w_sym in self.wyckoff_symmetries[w]:
+                    if found:
+                        break
+                    if self.is_position_wyckoff(position, w_sym):
+                        found = True
                         self.wyckoffs += [w]
                         self.species += [symbols[i]]
-                        taken_sites += [i]
                         break
-        if not len(taken_sites) == len(unique_sites):
-            print('Some sites where not identified')
+            if not found:
+                print('Error: position: ', position, ' not identified')
+
+        indices = np.argsort(self.species)
+
+        #print(self.species, self.wyckoffs)
+
+        free_wyckoffs = self.get_free_wyckoffs()
+        self.atoms_wyckoffs = []
+        self.free_atoms = []
+        for site in equivalent_sites:
+            index = unique_site_indices.index(site)
+            w_position = self.wyckoffs[index]
+            self.atoms_wyckoffs += [w_position + str(index)]
+            self.free_atoms += [w_position in free_wyckoffs]
 
     def get_spacegroup(self):
         return self.spacegroup
