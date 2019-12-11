@@ -15,9 +15,11 @@ from ase.spacegroup import crystal, get_spacegroup
 from catkit.gen.utils.connectivity import get_voronoi_neighbors, get_cutoff_neighbors
 
 from protosearch import build_bulk
-from .wyckoff_symmetries import WyckoffSymmetries
+from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
 from .classification import PrototypeClassification
-
+from .fitness_function import get_covalent_density, get_fitness, get_connections
+from protosearch.ml_modelling.regression_model import get_regression_model
+from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
 path = build_bulk.__path__[0]
 
 
@@ -47,6 +49,7 @@ class CellParameters(WyckoffSymmetries):
                  verbose=True,
                  wyckoffs_from_oqmd=False
                  ):
+
         super().__init__(spacegroup=spacegroup,
                          wyckoffs=wyckoffs)
 
@@ -55,10 +58,10 @@ class CellParameters(WyckoffSymmetries):
         self.species = species
 
         self.set_lattice_dof()
+        if self.wyckoffs is not None:
+            self.p_name = self.get_prototype_name(species)
 
-        self.p_name = self.get_prototype_name(species)
-
-        self.parameter_guess = self.initial_guess()
+            self.parameter_guess = self.initial_guess()
 
         self.verbose = verbose
         self.wyckoffs_from_oqmd = wyckoffs_from_oqmd
@@ -139,9 +142,9 @@ class CellParameters(WyckoffSymmetries):
 
         atoms = self.construct_atoms()
 
-        natoms = atoms.get_number_of_atoms()
+        self.natoms = atoms.get_number_of_atoms()
 
-        parameter_guess.update({'a': mean_radii * 4 * natoms ** (1 / 3)})
+        parameter_guess.update({'a': mean_radii * 4 * self.natoms ** (1 / 3)})
 
         return parameter_guess
 
@@ -181,13 +184,19 @@ class CellParameters(WyckoffSymmetries):
             return [cell_parameters]
 
         if optimize_wyckoffs or optimize_angles:
+            if self.verbose:
+                print('Running ML for {} - {} - {}. {} atoms'
+                      .format(self.spacegroup, self.wyckoffs, self.species,
+                              self.natoms))
+
             # Use simple GA to optimize parameters - returns several candidates
-            atoms_list = self.run_ga_optimization(master_parameters=master_parameters,
-                                                  optimize_lattice=optimize_lattice,
-                                                  optimize_angles=optimize_angles,
-                                                  optimize_wyckoffs=optimize_wyckoffs)
-            if max_candidates:
-                atoms_list = atoms_list[:max_candidates]
+            atoms_list = \
+                self.run_ml_ga_optimization(master_parameters=master_parameters,
+                                            optimize_lattice=optimize_lattice,
+                                            optimize_angles=optimize_angles,
+                                            optimize_wyckoffs=optimize_wyckoffs,
+                                            max_candidates=max_candidates)
+
             opt_cell_parameters = []
 
             for atoms in atoms_list:
@@ -201,8 +210,9 @@ class CellParameters(WyckoffSymmetries):
             opt_atoms_list = []
             opt_cell_parameters = []
             if self.verbose:
-                print('Optimizing lattice constants for {} - {} - {}'
-                      .format(self.spacegroup, self.wyckoffs, self.species))
+                print('Optimizing lattice constants for {} - {} - {}. {} atoms'
+                      .format(self.spacegroup, self.wyckoffs, self.species,
+                              self.natoms))
 
             atoms = self.construct_atoms(cell_parameters)
             opt_atoms = \
@@ -218,208 +228,7 @@ class CellParameters(WyckoffSymmetries):
 
         return opt_cell_parameters
 
-    def get_reflections(self, wyckoff_coordinate):
-        """ Use site symmetries to reduce the values of points that are sampled"""
-
-        w_pos = wyckoff_coordinate[1]
-
-        sym = self.wyckoff_site_symmetries[w_pos]
-
-        if '4' in sym:
-            return 1/8
-        elif '3' in sym:
-            return 1/4
-        elif '2' in sym:
-            return 1/2
-        else:
-            return 1
-
-    def run_ga_optimization(self,
-                            master_parameters=None,
-                            optimize_lattice=True,
-                            optimize_angles=True,
-                            optimize_wyckoffs=True,
-                            use_fitness_sharing=False):
-        """
-        Genetic algorithm optimization for free wyckoff coordinates
-        and lattice angles, based on the hard-sphere volume of the structures.
-        """
-
-        cell_parameters = self.initial_guess()
-        if master_parameters:
-            cell_parameters.update(master_parameters)
-        population = []
-
-        if optimize_wyckoffs:
-            self.reflections = {}
-            for v in self.coor_variables:
-                r = self.get_reflections(v)
-                self.reflections.update({v: r})
-
-        n_parameters = 0
-        if optimize_angles:
-            n_parameters += len(self.angle_variables)
-        if optimize_wyckoffs:
-            n_parameters += len(self.coor_variables)
-
-        population_size = max([10, n_parameters * 5])
-
-        for n in range(population_size):
-            parameters = {}
-            if optimize_wyckoffs:
-                for i, p in enumerate(self.coor_variables):
-                    parameters.update(
-                        {p: rand(1)[0] * 0.99 * self.reflections[p]})
-            if optimize_angles:
-                for i, p in enumerate(self.angle_variables):
-                    parameters.update({p: (rand(1)[0] - 0.5) * 30 + 90})
-            population += [parameters]
-
-        all_structures = []
-        best_fitness = []
-        best_generation_fitness = []
-        j = 0
-        while len(best_fitness) < 3 or len(set(best_fitness[-3:])) > 1:
-            """Stop interation if search has not found better
-            candidate in three rounds """
-            volumes = []
-            fitness = []
-            graphs = []
-            images = []
-            for pop in population:
-                cell_parameters.update(pop)
-                atoms = self.construct_atoms(cell_parameters)
-                if optimize_lattice:
-                    atoms = self.optimize_lattice_constants(atoms,
-                                                            proximity=0.95)
-                if atoms is None:
-                    continue
-
-                volume = atoms.get_volume()
-                connections = self.get_connections(atoms)
-                fit = self.get_fitness(atoms)
-
-                fitness += [fit]
-                all_structures += [{'parameters': pop,
-                                    'atoms': atoms.copy(),
-                                    'volume': volume,
-                                    'fitness': fit,
-                                    'graph': connections}]
-
-            j += 1
-            if use_fitness_sharing:
-                fitness_sharing_count = \
-                    np.array([graph_connections.count(graph_connections[i])
-                              for i in range(len(fitness))])
-                fitness /= fitness_sharing_count
-
-            indices = np.argsort(fitness)[::-1]
-            survived = np.array(population)[indices][:population_size // 2]
-
-            best_generation_fitness += [fitness[0]]
-            best_fitness += [max(best_generation_fitness + best_fitness)]
-
-            population = self.crossover(survived, population_size - 1) + \
-                self.mutation(survived, 1)
-
-            population = population[:population_size]
-            j += 1
-
-        all_fitness = np.array([s['fitness'] for s in all_structures])
-        indices = np.argsort(all_fitness)[::-1]
-        all_fitness = np.array(all_fitness)[indices]
-        all_structures = np.array(all_structures)[indices]
-
-        all_atoms = [s['atoms'] for s in all_structures]
-        all_graphs = np.array([s['graph'] for s in all_structures])
-
-        volume_0 = min([all_structures[i]['volume']
-                        for i in range(len(all_structures))])
-
-        indices = [i for i, f in enumerate(all_fitness) if not
-                   f < -2 and not
-                   np.any(all_graphs[i] in all_graphs[:i]) and not
-                   all_structures[i]['volume'] > 5 * volume_0]
-        all_atoms = [all_atoms[i] for i in indices]
-
-        return all_atoms
-
-    def get_fitness(self, atoms):
-        """ Fitness of structure for the GA. Currently only works
-        for Oxides and metals. Fitness is based on the prefered connectivity of atoms,
-        as discussed in D. Waroquiers et al. Chem. Mater. 2017, 29, 8346−8360"""
-
-        CM = get_cutoff_neighbors(atoms, cutoff=2.5)
-
-        # Assume prefered O-con = 6 for now
-        # favored_O_connections = {'Ti': {'3': 6, '4': 5.5},
-        #                         'Cr': {'3': 6},
-        #                         'Fe': {'3': 5.7, '4': 5.5},
-        #                         'Sc': {'3': 6.1},
-        #                         'Ti': {'3': 6, '4': 5.8},
-        #                         'V': {'3': 6, '4': 5.5, '5': 4.5},
-        #                         'Cr': {'2': 5, '3': 6, '4': 5.5, '5': 4.3, '6': 4},
-        #                         'Mn': {'2': 5, '3': 6, '4': 5.5, '5': 4.3, '6': 4}}
-
-        #favored_Oxy_states = {'Ti': 4, 'Cr': 3, 'Fe': 3, 'Sc': 3}
-
-        metal_n = [3, 4, 11, 12, 13] + list(range(19, 32)) + list(range(37, 51)) + \
-            list(range(55, 85))
-        symbols = list(atoms.get_chemical_symbols())
-        metals = [[i, a.symbol]
-                  for i, a in enumerate(atoms) if a.number in metal_n]
-        fitness = 0
-        if 'O' in symbols:
-            iOs = [i for i, a in enumerate(atoms) if a.symbol == 'O']
-            restids = [i for i in range(len(atoms)) if not i in iOs]
-            avg_oxy_state = symbols.count('O') * 2 / len(metals)
-            for i, m in metals:
-                #f_O_s = favored_Oxy_states[m]
-                f_O_c = 6  # favored_O_connections[m][str(f_O_s)]
-                key = '{}-{}'.format(*list(sorted(['O', m])))
-                n_metal = symbols.count(m)
-                fitness -= abs(sum(CM[i, iOs]) - f_O_c)
-
-            fitness -= np.sum(CM[iOs, ][:, iOs]) / len(iOs)/2
-
-            fitness -= np.sum(CM[restids, ][:, restids]) / len(restids)/2
-        elif np.all([z in metal_n for z in atoms.get_atomic_numbers()]):
-            fitness = np.sum(CM) / len(atoms)
-
-        return fitness/len(atoms)
-
-    def get_connections(self, atoms, cutoff=1):
-        connectivity = get_voronoi_neighbors(atoms)
-        atoms_connections = {}
-
-        for i in range(len(atoms)):
-            for j in range(len(atoms)):
-                symbols = '-'.join(sorted([atoms[i].symbol, atoms[j].symbol]))
-                if not symbols in atoms_connections:
-                    atoms_connections[symbols] = 0
-                atoms_connections[symbols] += connectivity[i][j] / 2
-
-        return atoms_connections
-
-    def get_n_cross_connections(self, atoms):
-        connections = self.get_connections(atoms)
-        n_cross_connections = 0
-        n_same_connections = 0
-        for pair in connections.keys():
-            a, b = pair.split('-')
-            if a == b and not a == 'O':
-                n_same_connections += connections[pair]
-            else:
-                n_cross_connections += connections[pair]
-
-        n_metal = len([1 for atom in atoms if not atom.symbol == 'O'])
-        n_O = len([1 for atom in atoms if atom.symbol == 'O'])
-        if n_O == 0:
-            n_O = 1
-
-        return n_cross_connections / n_metal / n_O
-
-    def crossover(self, population, n_children=None):
+    def crossover(self, population, n_per_couple=10, n_children=None):
         """Generate new candidate by mixing values of two"""
         children = []
         variables = list(population[0].keys())
@@ -429,34 +238,245 @@ class CellParameters(WyckoffSymmetries):
                                                sorted(pop2.values()),
                                                rtol=0.05)):  # inbred child
                     continue
-                child = {}
-                for p in variables:
-                    c_point = 0.5 + (rand(1)[0] - 0.5) * 0.5
-                    value = pop[p] * c_point + pop2[p] * (1 - c_point)
-                    child.update({p: value})
+                for m in range(n_per_couple):
+                    child = {}
+                    for p in variables:
+                        c_point = rand(1)[0]  # 0.5 + (rand(1)[0] - 0.5) * 0.5
+                        value = pop[p] * c_point + pop2[p] * (1 - c_point)
+                        child.update({p: value})
 
-                children += [child]
+                    children += [child]
         n = n_children or len(population)
         return children[:n]
 
-    def mutation(self, population, n_children=None):
-
+    def mutation(self, population, n_per_pop=10, n_children=None):
         mutated = []
         variables = list(population[0].keys())
         for i, pop in enumerate(population):
-            mutant = pop.copy()
-            indices = randint(len(variables), size=len(variables) // 2)
-            for j in indices:
-                p = variables[j]
-                value = pop[p]
-                if p in self.coor_variables:
-                    value = rand(1)[0] * self.reflections[p]
-                elif p in self.angle_variables:
-                    value = (rand(1)[0] - 0.5) * 30 + 90
-                mutant.update({p: value})
-            mutated += [mutant]
-        n = n_children or len(population)
+            for m in range(n_per_pop):
+                mutant = pop.copy()
+                indices = randint(len(variables), size=len(variables) // 2)
+
+                for j in indices:
+                    p = variables[j]
+                    value = pop[p]
+                    if p in self.coor_variables:
+                        value += (rand(1)[0] - 0.5) * 0.1
+                    elif p in self.angle_variables:
+                        value = (rand(1)[0] - 0.5) * 30 + 90
+                    mutant.update({p: value})
+                mutated += [mutant]
+            n = n_children or len(population)
         return mutated[:n]
+
+    def run_ml_ga_optimization(self,
+                               master_parameters=None,
+                               optimize_lattice=True,
+                               optimize_angles=True,
+                               optimize_wyckoffs=True,
+                               use_fitness_sharing=False,
+                               batch_size=5,
+                               max_candidates=1,
+                               debug=False):
+        """
+        ML-accelerated Genetic algorithm optimization 
+        for free wyckoff coordinates
+        and lattice angles.
+        """
+
+        cell_parameters = self.initial_guess()
+        if master_parameters:
+            cell_parameters.update(master_parameters)
+        population = []
+
+        feature_variables = []
+        if optimize_wyckoffs:
+            feature_variables += self.coor_variables
+
+        if optimize_angles:
+            feature_variables += self.angle_variables
+
+        n_parameters = len(feature_variables)
+        population_size = min([5000, n_parameters * 100])
+        population = []
+
+        test_features = []
+        for n in range(population_size):
+            t_f = []
+            parameters = {}
+            if optimize_wyckoffs:
+                for i, p in enumerate(self.coor_variables):
+                    val = rand(1)[0] * 0.99
+                    parameters.update({p: val})
+                    t_f += [val]
+
+            if optimize_angles:
+                for i, p in enumerate(self.angle_variables):
+                    val = (rand(1)[0] - 0.5) * 30 + 90
+                    parameters.update({p: val})
+                    t_f += [val]
+            population += [parameters]
+            test_features += [t_f]
+
+        atoms = self.construct_atoms()
+        covalent_radii = np.array([cradii[n] for n in atoms.numbers])
+        M = covalent_radii * np.ones([len(atoms), len(atoms)])
+        self.min_distances = (M + M.T)
+
+        primitive_voronoi = len(atoms) > 64
+
+        covalent_radii = np.array([cradii[n] for n in atoms.numbers])
+        covalent_volume = np.sum(4/3 * np.pi * covalent_radii ** 3)
+        cell_length = (covalent_volume * 2) ** (1/3)
+
+        test_features = np.array(test_features)
+        batch_indices = np.random.randint(len(test_features),
+                                          size=batch_size)
+
+        train_features = None
+
+        fitness = np.array([])
+        all_structures = []
+
+        converged = False
+        iter_id = 1
+        train_population = []
+        while not converged:
+            for i in batch_indices:
+                pop = population[i]
+                train_population += [pop]
+                cell_parameters.update(pop)
+                atoms = self.construct_atoms(cell_parameters)
+                atoms = self.optimize_lattice_constants(atoms,
+                                                        proximity=0.9,
+                                                        optimize_wyckoffs=False)
+                parameters = cell_to_cellpar(atoms.get_cell())
+
+                if primitive_voronoi:
+                    # Use primitive cell for voronoi analysis for
+                    # large systems
+                    for i, param_name in enumerate(['a', 'b', 'c',
+                                                    'alpha', 'beta', 'gamma']):
+                        if param_name in cell_parameters:
+                            cell_parameters.update({param_name: parameters[i]})
+
+                    atoms = self.construct_atoms(cell_parameters,
+                                                 primitive_cell=True)
+
+                fit = get_fitness(atoms)
+                connections = None
+                if fit > -2:
+                    # Don't do voronoi for very dilute structures
+                    connections = get_connections(atoms)
+
+                fitness = np.append(fitness, fit)
+                all_structures += [{'parameters': cell_parameters,
+                                    'atoms': atoms.copy(),
+                                    'fitness': fit,
+                                    'graph': connections}]
+
+            best_fitness = np.max(fitness)
+            print('iter {} best_fitnes:'.format(iter_id),  np.max(fitness))
+
+            if train_features is None:
+                train_features = test_features[batch_indices]
+            else:
+                train_features = np.append(train_features,
+                                           test_features[batch_indices],
+                                           axis=0)
+
+            test_features = np.delete(test_features, batch_indices, axis=0)
+
+            population = np.delete(population, batch_indices, axis=0)
+
+            indices = np.argsort(fitness)[::-1]
+            ga_survived = np.array(train_population)[indices][:10]
+            new_population = self.crossover(ga_survived) + \
+                self.mutation(ga_survived)
+
+            for pop in new_population:
+                val = []
+                for v in feature_variables:
+                    val += [pop[v]]
+                val = np.expand_dims(val, axis=0)
+
+                test_features = np.append(test_features, val, axis=0)
+                population = np.append(population, pop)
+
+            features, bad_indices = \
+                clean_features({'train': train_features,
+                                'test': test_features})
+
+            fitness = np.delete(fitness, bad_indices['train'])
+            test_features = np.delete(test_features, bad_indices['test'],
+                                      axis=0)
+            train_features = np.delete(train_features, bad_indices['train'],
+                                       axis=0)
+            population = np.delete(population, bad_indices['train'])
+
+            try:
+                Model = get_regression_model('catlearn')(
+                    features['train'],
+                    np.array(fitness),
+                    optimize_hyperparameters=True,
+                    kernel_width=3,
+                    bounds=((0.5, 5),))
+            except:
+                Model = get_regression_model('catlearn')(
+                    features['train'],
+                    np.array(fitness),
+                    optimize_hyperparameters=False,
+                    kernel_width=3)
+
+            result = Model.predict(features['test'])
+            predictions = result['prediction']
+            unc = result['uncertainty']
+            AQU = predictions + 0.5 * unc
+
+            if debug:
+                import pylab as p
+                idx = np.argsort(predictions)
+                p.plot(range(len(predictions)), predictions[idx])
+                p.plot(range(len(predictions)),
+                       predictions[idx] + unc[idx], '--')
+                p.plot(range(len(predictions)),
+                       predictions[idx] * 0 + best_fitness, '--')
+                p.show()
+
+            if iter_id > 30 or len(predictions) < 7:
+                converged = True
+            elif not np.max(AQU) > best_fitness and iter_id > 5:
+                converged = True
+            elif best_fitness > 0.95:
+                converged = True
+
+            batch_indices = np.argsort(AQU)[::-1][:batch_size]
+
+            iter_id += 1
+
+        indices = np.argsort(fitness)[::-1][:max_candidates]
+        fitness = fitness[indices]
+
+        all_structures = np.array(all_structures)[indices]
+        all_graphs = np.array([s['graph'] for s in all_structures])
+
+        if fitness[0] < 0.8:
+            indices = [0]
+        else:
+            indices = [i for i, f in enumerate(fitness) if
+                       f > 0.8 and not
+                       np.any(all_graphs[i] in all_graphs[:i])
+                       ]
+
+        if primitive_voronoi:
+            # generate conventional structure
+            all_atoms = [self.construct_atoms(all_structures[i]['parameters'])
+                         for i in indices]
+        else:
+            all_atoms = [s['atoms'] for s in all_structures]
+            all_atoms = [all_atoms[i] for i in indices]
+        print('final fitness: ', fitness[indices])
+        return all_atoms
 
     def construct_atoms(self, cell_parameters=None, primitive_cell=False):
         if cell_parameters:
@@ -481,7 +501,6 @@ class CellParameters(WyckoffSymmetries):
                     tuple(np.dot(wyckoff_coordinate, M.T) + c)]
 
             symbols += [self.species[i_w]] * m
-
         cellpar = []
         for p in ['a', 'b', 'c']:
             value = self.parameter_guess.get(p, None)
@@ -500,8 +519,11 @@ class CellParameters(WyckoffSymmetries):
                         spacegroup=self.spacegroup,
                         cellpar=cellpar,
                         primitive_cell=primitive_cell,
-                        onduplicates='keep')
-
+                        onduplicates='keep',
+                        symprec=1e-5)
+        if not primitive_cell:
+            if not len(relative_positions) == len(atoms):
+                return None
         return atoms
 
     def check_prototype(self, atoms):
@@ -660,7 +682,7 @@ class CellParameters(WyckoffSymmetries):
         Dm, distances = get_interatomic_distances(atoms)
         relative_distances = distances / self.min_distances
         move_pairs = self.get_move_pairs(distances, 1.1)
-        atoms_distance = 0.9
+        atoms_distance = 0.90
         niter = 0
         images = [atoms.copy()]
         while len(move_pairs) > 0 and niter < atoms.get_number_of_atoms() * 3:
