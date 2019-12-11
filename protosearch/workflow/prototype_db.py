@@ -324,7 +324,7 @@ class PrototypeSQL:
         statement = 'SELECT * from prototype'
         if query:
             statement += ' where {}'.format(query)
-        print(statement)
+
         cur.execute(statement)
         data = cur.fetchall()
 
