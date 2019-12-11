@@ -31,8 +31,8 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
 
     pair_names, M, free_letters = get_wyckoff_pair_symmetry_matrix(spacegroup)
     n_pairs = len(pair_names)
-    print(pair_names[:17])
-    print(M[:17][:, :17])
+    # print(pair_names[:17])
+    #print(M[:17][:, :17])
     # sys.exit()
     stoich_vector = stoichiometry.split('_')
     n_types = len(stoich_vector)
@@ -45,6 +45,8 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
     start_index = 0
 
     pair_combinations = [['']]
+
+    combinations = [['']]
 
     letter_combinations = [[]]
 
@@ -61,11 +63,15 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
     while len(pair_combinations) > 0:
         prev_pair_combinations = pair_combinations.copy()
         pair_combinations = []
+
+        prev_combinations = combinations.copy()
+        combinations = []
+
         prev_natoms_combinations = natoms_combinations.copy()
         natoms_combinations = []
         #prev_letter_combinations = prev_letter_combinations.copy()
-        for j, prev_comb in enumerate(prev_pair_combinations):
-            next_letter = prev_comb[-1].split('_')[-1]
+        for j, prev_comb in enumerate(prev_combinations):
+            next_letter = prev_comb[-1]  # prev_comb[-1].split('_')[-1]
             if next_letter == '':
                 next_pair_indices = range(len(pair_names))
                 start_index = 0
@@ -84,14 +90,11 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
                 if len(check_range) == 0:
                     check_range = []
                     continue
-                #print(pair, check_range)
-                #print(M[i, check_range])
-                # np.all(M[check_range, first_match] == 0):
-                if np.all(M[i][check_range] == 0):
-                    # print(pair)
 
+                if np.all(M[i][check_range] == 0):  # No matching pairs
                     if prev_comb == ['']:
-                        new_comb = [pair]
+                        new_pair_comb = [pair]
+                        new_comb = pair.split('_')
                     else:
                         new_comb = prev_comb + [pair]
 
@@ -107,13 +110,36 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
                         # Only add position once
                         continue
 
-                    comb_multi = [multiplicity[np.where(
+                    comb_natoms = [multiplicity[np.where(
                         letters == l)[0]] for l in comb_letters]
 
-                    if sum(comb_multi) > sum(n_atoms_rep):
+                    # cumsum_
+                    if sum(comb_natoms) > sum(n_atoms_rep):
                         continue
 
-                    if sum(comb_multi) % n_tot == 0:
+                    if sum(comb_natoms) % n_tot == 0:
+
+                        rep = sum(comb_natoms) / n_tot
+                        n_atoms_temp = [n * rep for n in n_atoms]
+
+                        last_i = 0
+                        match = True
+                        atoms_wyckoff_cut = []
+                        for na in n_atoms_temp:
+                            cumsum_atoms = np.cumsum(comb_natoms[last_i:])
+                            idx = np.where(cumsum_atoms == na)[0]
+                            if len(idx) == 0:
+                                match = False
+                            else:
+                                atoms_wyckoff_cut += [idx[0] + 1]
+                                last_i = idx[0] + 1
+                        # print(atoms_wyckoff_cut)
+                        # if not idx[0] + 2 == len(comb_natoms) or not match:
+                        #    continue
+
+                        if not match:
+                            continue
+
                         print(new_comb)
                         unique = True
                         pair_test = new_comb.copy()
@@ -122,25 +148,36 @@ def get_wyckoff_combinations_for_spacegroup(spacegroup, stoichiometry,
                                           [0] + '_' + new_comb[1][-1]]
 
                         indices_1 = [pair_names.index(p) for p in pair_test]
-                        for f_comb in final_combinations:
+                        for f_comb in [f for f in final_combinations if len(f) == len(new_comb)]:
+                            print(new_comb, f_comb)
                             pair_test_2 = f_comb.copy()
                             if len(f_comb) > 1:
                                 pair_test_2 += [f_comb[0]
                                                 [0] + '_' + f_comb[1][-1]]
-                            print(pair_test, pair_test_2)
+
                             indices_0 = [pair_names.index(
                                 p) for p in pair_test_2]
-                            M_test = M[indices_0, :][:, indices_1]
-                            print(M_test)
-                            if np.all(M_test.any(axis=0)) and np.all(M_test.any(axis=1)):
-                                print('no')
-                                unique = False
-                            else:
-                                print('OK')
+
+                            cut0 = 0
+                            uniques = []
+                            for cut in atoms_wyckoff_cut:
+                                idx0 = indices_0[cut0: cut]
+                                idx1 = indices_1[cut0: cut]
+                                cut0 = cut.copy()
+                                M_test = M[idx0, :][:, idx1]
+                                if np.all(M_test.any(axis=0)) and np.all(M_test.any(axis=1)):
+                                    print(idx0, idx1, M_test)
+                                    print('no')
+                                    uniques += [False]
+                                else:
+                                    uniques += [True]
+                            unique += np.any(uniques)
+                        # print(unique)
                         if unique:
                             final_combinations += [new_comb]
                             #print(new_comb, 'All ok')
                     pair_combinations += [new_comb]
+                    print(pair_combinations)
             # print(final_combinations)
             # sys.exit()
         n += 1
@@ -246,4 +283,4 @@ def get_wyckoff_pair_symmetry_matrix(spacegroup):
 
 if __name__ == "__main__":
     #pair_names, M = get_wyckoff_pair_symmetry_matrix(3)
-    get_wyckoff_combinations_for_spacegroup(2, '1_2', n_max_atoms=3)
+    get_wyckoff_combinations_for_spacegroup(10, '1_2', n_max_atoms=3)
