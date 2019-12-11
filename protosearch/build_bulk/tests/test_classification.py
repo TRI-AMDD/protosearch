@@ -156,13 +156,62 @@ class PrototypeClassificationTest(unittest.TestCase):
         for key, value in parameters_ref.items():
             assert np.isclose(parameters[key], value, rtol=1e-5)
 
+    def test6_primitive(self):
+        filename = path + '/Cr2O3_mp-19399_primitive.cif'
+        atoms = read(filename)
+
+        PC = PrototypeClassification(atoms)
+
+        prototype, parameters = PC.get_classification()
+
+        prototype_ref = {'p_name': 'A2B3_6_c_e_167',
+                         'structure_name': '167_Cr_c_O_e',
+                         'spacegroup': 167,
+                         'wyckoffs': ['c', 'e'],
+                         'species': ['Cr', 'O']}
+
+        parameters_ref = {'a': 5.09424496,
+                          'b': 5.09424496,
+                          'c': 13.78071749,
+                          'alpha': 90,
+                          'beta': 90,
+                          'gamma': 120,
+                          'zc0':  0.150269 + 0.5,
+                          'xe1': 0.300642}
+
+        for key, value in prototype_ref.items():
+            assert prototype[key] == value
+
+        for key, value in parameters_ref.items():
+            assert np.isclose(parameters[key], value, rtol=1e-5)
+
+    def test7_weird_cell(self):
+
+        filename = path + '/IrO_167.cif'
+
+        atoms = read(filename)
+        PC = PrototypeClassification(atoms)
+
+        prototype_ref, parameters_ref = PC.get_classification()
+
+        filename = path + '/000__id-unique_8p8evt9pcg__id-short_207.cif'
+
+        atoms = read(filename)
+        PC = PrototypeClassification(atoms, tolerance=0.09)
+
+        prototype, parameters = PC.get_classification()
+
+        for key, value in prototype_ref.items():
+            assert prototype[key] == value
+
 
 if __name__ == '__main__':
     #P = PrototypeClassificationTest()
-    #P.test1_cromium_oxide()
-    #P.test2_anatase()
-    #P.test3_manganese_oxide()
-    #P.test4_nickel_oxide()
-    #P.test5_ternary_alloy()
-
+    # P.test1_cromium_oxide()
+    # P.test2_anatase()
+    # P.test3_manganese_oxide()
+    # P.test4_nickel_oxide()
+    # P.test5_ternary_alloy()
+    # P.test6_primitive()
+    # P.test7_weird_cell()
     unittest.main()
