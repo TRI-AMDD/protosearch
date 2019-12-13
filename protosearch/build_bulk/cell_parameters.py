@@ -620,7 +620,7 @@ class CellParameters(WyckoffSymmetries):
                 np.argmin(distances/self.min_distances),
                 distances.shape)
             min_dir_vector = Dm.copy()[min_distances]
-            min_dir_vector /= np.linalg.norm(min_dir_vector)
+            min_dir_vector /= distances[min_distances]
             dot_directions = []
             for direction in self.d_o_f:
                 v = np.zeros([3])
