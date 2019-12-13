@@ -350,6 +350,8 @@ class CellParameters(WyckoffSymmetries):
                 atoms = self.optimize_lattice_constants(atoms,
                                                         proximity=0.9,
                                                         optimize_wyckoffs=False)
+                if atoms is None:
+                    continue
                 parameters = cell_to_cellpar(atoms.get_cell())
 
                 if primitive_voronoi:
