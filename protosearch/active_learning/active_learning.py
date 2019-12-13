@@ -78,17 +78,17 @@ class ActiveLearningLoop:
 
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.Workflow = Workflow(db_filename=self.db_filename)
-        self.DB = PrototypeSQL(self.db_filename)
-        self.DB.write_status(
+        #self.DB = self.Workflow.#PrototypeSQL(self.db_filename)
+        self.Workflow.write_status(
             chemical_formulas=chemical_formulas, batch_size=batch_size)
 
     def _initialize(self):
         if not self.status['enumerated']:
             self.enumerate_structures(self.spacegroups)
-            self.DB.write_status(enumerated=1)
+            self.Workflow.write_status(enumerated=1)
         if not self.status['fingerprinted']:
             self.generate_fingerprints()
-            self.DB.write_status(fingerprinted=1)
+            self.Workflow.write_status(fingerprinted=1)
 
         self.batch_no = (self.status.get('last_batch_no', None) or 0) + 1
 
@@ -97,7 +97,7 @@ class ActiveLearningLoop:
             elements += element_list
         elements = list(set(elements))
         #self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
-        self.DB.write_status(last_batch_no=self.batch_no)
+        self.Workflow.write_status(last_batch_no=self.batch_no)
 
         failed_ids = self.monitor_submissions(batch_size=0,
                                               standard_state=1)
@@ -105,7 +105,7 @@ class ActiveLearningLoop:
             raise RuntimeError(
                 'Standard state calculation failed for one or more species')
 
-        self.DB.write_status(initialized=1)
+        self.Workflow.write_status(initialized=1)
 
     def set_formulas_and_elements(self, formulas, elements=None):
         alphabet = list(string.ascii_uppercase)
@@ -150,7 +150,7 @@ class ActiveLearningLoop:
             if temp_failed_ids:
                 print('\nOne or more jobs failed:')
                 for i in failed_ids:
-                    row = self.DB.ase_db.get(id=i)
+                    row = self.Workflow.ase_db.get(id=i)
                     message = row.data.get('error', 'No message').split('\n')
                     if len(message) > 1:
                         message = message[-2]
@@ -172,7 +172,7 @@ class ActiveLearningLoop:
         """Run actice learning loop"""
 
         WF = self.Workflow
-        self.status = self.DB.get_status()
+        self.status = self.Workflow.get_status()
 
         if not self.status['initialized']:
             self._initialize()
@@ -185,20 +185,20 @@ class ActiveLearningLoop:
         happy = False
         while not happy:
             self.monitor_submissions(batch_size=self.batch_size)
-            self.DB.write_job_status()
+            self.Workflow.write_job_status()
             self.generate_fingerprints(completed=True)
 
             happy = self.evaluate()
 
-            self.train_ids = self.DB.get_completed_structure_ids()
-            self.test_ids = self.DB.get_uncompleted_structure_ids()
+            self.train_ids = self.Workflow.get_completed_structure_ids()
+            self.test_ids = self.Workflow.get_uncompleted_structure_ids()
             self.get_ml_prediction()
 
             all_ids = np.append(self.test_ids, self.train_ids)
             all_energies = np.append(self.energies, self.targets)
             all_uncertainties = np.append(self.uncertainties,
                                           np.zeros_like(self.targets))
-            self.DB.write_predictions(
+            self.Workflow.write_predictions(
                 self.batch_no, all_ids, all_energies, all_uncertainties)
 
             self.acquire_batch()
@@ -210,21 +210,21 @@ class ActiveLearningLoop:
     def test_run(self, acquire='UCB', kappa=None):
         """Use already completed calculations to test the loop """
         WF = self.Workflow
-        self.status = self.DB.get_status()
+        self.status = self.Workflow.get_status()
         self.corrected_batch_size = self.batch_size
 
         self.batch_no = 1
         self.batch_ids = []
-        self.test_ids = self.DB.get_initial_structure_ids(completed=True)
+        self.test_ids = self.Workflow.get_initial_structure_ids(completed=True)
 
-        completed_ids = np.array(self.DB.get_completed_structure_ids())
+        completed_ids = np.array(self.Workflow.get_completed_structure_ids())
 
         indices = np.random.randint(len(completed_ids),
                                     size=self.batch_size)
 
         self.train_ids = completed_ids[indices]
 
-        completed_initial = [self.DB.ase_db.get(
+        completed_initial = [self.Workflow.ase_db.get(
             int(t)).initial_id for t in self.train_ids]
 
         self.test_ids = np.array([
@@ -251,7 +251,7 @@ class ActiveLearningLoop:
             else:
                 self.acquire_batch(method=acquire, kappa=kappa)
 
-            completed_ids = [self.DB.ase_db.get(int(t)).final_id
+            completed_ids = [self.Workflow.ase_db.get(int(t)).final_id
                              for t in self.batch_ids]
             self.train_ids = np.sort(np.append(self.train_ids, completed_ids))
 
@@ -265,9 +265,9 @@ class ActiveLearningLoop:
         Get the fraction of structures that have been processed, including
         completed as well as errored jobs.
         """
-        n_nonrelaxed = self.DB.ase_db.count(relaxed=0)
-        n_errored = self.DB.ase_db.count(relaxed=0, completed=-1)
-        n_relaxed = self.DB.ase_db.count(relaxed=1)
+        n_nonrelaxed = self.Workflow.ase_db.count(relaxed=0)
+        n_errored = self.Workflow.ase_db.count(relaxed=0, completed=-1)
+        n_relaxed = self.Workflow.ase_db.count(relaxed=1)
 
         frac = (n_relaxed + n_errored) / n_nonrelaxed
 
@@ -352,12 +352,12 @@ class ActiveLearningLoop:
     def generate_fingerprints(self,
                               feature_methods=['voronoi'],
                               completed=False):
-        self.DB._connect()
-        ase_db = self.DB.ase_db
+        self.Workflow._connect()
+        ase_db = self.Workflow.ase_db
         atoms_list = []
         target_list = {}
 
-        ids = self.DB.get_new_fingerprint_ids(completed=completed)
+        ids = self.Workflow.get_new_fingerprint_ids(completed=completed)
         if not ids:
             print('Fingerprints up do date!')
             return
@@ -380,22 +380,22 @@ class ActiveLearningLoop:
         fingerprints_df = FP.generate_fingerprints()['voronoi'].assign(id=ids)
         fingerprints_df = fingerprints_df.astype({'id': int})
 
-        self.DB.write_dataframe(table='fingerprint',
+        self.Workflow.write_dataframe(table='fingerprint',
                                 df=fingerprints_df)
 
-        self.DB.write_dataframe(table='target',
+        self.Workflow.write_dataframe(table='target',
                                 df=targets_df)
 
     def save_formation_energies(self):
-        ase_db = self.DB.ase_db
+        ase_db = self.Workflow.ase_db
 
-        for row in self.DB.ase_db.select('-Ef', relaxed=1):
+        for row in self.Workflow.ase_db.select('-Ef', relaxed=1):
             energy = row.energy
             elements, counts = np.unique(
                 row.toatoms().symbols, return_counts=True)
             ref_energies = []
             for i, e in enumerate(elements):
-                ref_row = list(self.DB.ase_db.select(e,
+                ref_row = list(self.Workflow.ase_db.select(e,
                                                      relaxed=1,
                                                      standard_state=1,
                                                      limit=1))
@@ -411,13 +411,13 @@ class ActiveLearningLoop:
             ase_db.update(id=row.id, Ef=formation_energy)
 
     def get_ml_prediction(self, model='catlearn'):
-        train_features = self.DB.load_dataframe(
+        train_features = self.Workflow.load_dataframe(
             'fingerprint', ids=self.train_ids)
 
         ids_train = train_features.pop('id')
-        targets = self.DB.load_dataframe('target', ids=self.train_ids)
+        targets = self.Workflow.load_dataframe('target', ids=self.train_ids)
         ids_targets = targets.pop('id')
-        test_features = self.DB.load_dataframe(
+        test_features = self.Workflow.load_dataframe(
             'fingerprint', ids=self.test_ids)
         ids_test = test_features.pop('id')
 
@@ -448,7 +448,7 @@ class ActiveLearningLoop:
             batch_size = self.corrected_batch_size
 
         if method == 'random':
-            uncompleted_ids = self.DB.get_uncompleted_structure_ids()
+            uncompleted_ids = self.Workflow.get_uncompleted_structure_ids()
             acquistision_values = np.zeros(len(uncompleted_ids))
             indices = np.random.randint(len(uncompleted_ids), size=batch_size)
             self.batch_ids = np.array(uncompleted_ids)[indices]

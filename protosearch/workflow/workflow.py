@@ -39,7 +39,7 @@ class Workflow(PrototypeSQL):
             db_filename = self.basepath + '/prototypes.db'
 
         super().__init__(filename=db_filename)
-        self._connect()
+        #self._connect()
         self.collected = False
 
     def _collect(self):
