@@ -2,11 +2,77 @@ import numpy as np
 import scipy
 from shapely.geometry import Polygon
 from ase.data import covalent_radii as cradii
-from catkit.gen.utils.coordinates import expand_cell
+#from catkit.gen.utils.coordinates import expand_cell
 
 from protosearch.utils.data import metal_numbers, prefered_O_state,\
     favored_O_connections, electronegs
 
+def expand_cell(atoms, cutoff=None, padding=None):
+    """Return Cartesian coordinates atoms within a supercell
+    which contains repetitions of the unit cell which contains
+    at least one neighboring atom.
+
+    Parameters
+    ----------
+    atoms : Atoms object
+        Atoms with the periodic boundary conditions and unit cell
+        information to use.
+    cutoff : float
+        Radius of maximum atomic bond distance to consider.
+    padding : ndarray (3,)
+        Padding of repetition of the unit cell in the x, y, z
+        directions. e.g. [1, 0, 1].
+
+    Returns
+    -------
+    index : ndarray (N,)
+        Indices associated with the original unit cell positions.
+    coords : ndarray (N, 3)
+        Cartesian coordinates associated with positions in the
+        supercell.
+    offsets : ndarray (M, 3)
+        Integer offsets of each unit cell.
+    """
+    cell = atoms.cell
+    pbc = atoms.pbc
+    pos = atoms.positions
+
+    if padding is None and cutoff is None:
+        diags = np.sqrt((
+            np.dot([[1, 1, 1],
+                    [-1, 1, 1],
+                    [1, -1, 1],
+                    [-1, -1, 1]],
+                   cell)**2).sum(1))
+
+        if pos.shape[0] == 1:
+            cutoff = max(diags) / 2.
+        else:
+            dpos = (pos - pos[:, None]).reshape(-1, 3)
+            Dr = np.dot(dpos, np.linalg.inv(cell))
+            D = np.dot(Dr - np.round(Dr) * pbc, cell)
+            D_len = np.sqrt((D**2).sum(1))
+
+            cutoff = min(max(D_len), max(diags) / 2.)
+
+    latt_len = np.sqrt((cell**2).sum(1))
+    V = abs(np.linalg.det(cell))
+    padding = pbc * np.array(np.ceil(cutoff * np.prod(latt_len) /
+                                     (V * latt_len)), dtype=int)
+
+    offsets = np.mgrid[
+        -padding[0]:padding[0] + 1,
+        -padding[1]:padding[1] + 1,
+        -padding[2]:padding[2] + 1].T
+    tvecs = np.dot(offsets, cell)
+    coords = pos[None, None, None, :, :] + tvecs[:, :, :, None, :]
+
+    ncell = np.prod(offsets.shape[:-1])
+    index = np.arange(len(atoms))[None, :].repeat(ncell, axis=0).flatten()
+    coords = coords.reshape(np.prod(coords.shape[:-1]), 3)
+    offsets = offsets.reshape(ncell, 3)
+
+    return index, coords, offsets
 
 def get_area_neighbors(atoms, cell_cutoff=15, cutoff=None,
                        return_std_con=False):
@@ -50,7 +116,7 @@ def get_area_neighbors(atoms, cell_cutoff=15, cutoff=None,
         if not return_std_con:
             return connectivity
         else:
-            return connectivity, connectivity_int
+            return connectivity, connectivity_int.astype(int)
 
     Voro_cell = voronoi.points.ptp(axis=0)
     for i, n in enumerate(origional_indices):
@@ -276,7 +342,7 @@ def get_fitness(atoms, use_density=True):
         # get connectivity matrix
         con_matrix, con_int = get_area_neighbors(atoms,
                                                  return_std_con=True)
-
+        np.place(con_int, con_int==0, 1)
         con_matrix_norm = con_matrix / con_int
         #print(np.round(con_matrix, 2))
         metal_idx = [i for i, a in enumerate(
