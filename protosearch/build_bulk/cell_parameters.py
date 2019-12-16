@@ -341,7 +341,9 @@ class CellParameters(WyckoffSymmetries):
         converged = False
         iter_id = 1
         train_population = []
+
         while not converged:
+            bad_indices = []
             for i in batch_indices:
                 pop = population[i]
                 train_population += [pop]
@@ -351,6 +353,7 @@ class CellParameters(WyckoffSymmetries):
                                                         proximity=0.9,
                                                         optimize_wyckoffs=False)
                 if atoms is None:
+                    bad_indices +=[i]
                     continue
                 parameters = cell_to_cellpar(atoms.get_cell())
 
@@ -379,7 +382,8 @@ class CellParameters(WyckoffSymmetries):
 
             best_fitness = np.max(fitness)
             print('iter {} best_fitnes:'.format(iter_id),  np.max(fitness))
-
+            batch_indices = [idx for idx in batch_indices if not idx 
+                             in bad_indices]
             if train_features is None:
                 train_features = test_features[batch_indices]
             else:
@@ -388,6 +392,7 @@ class CellParameters(WyckoffSymmetries):
                                            axis=0)
 
             test_features = np.delete(test_features, batch_indices, axis=0)
+            test_features = np.delete(test_features, bad_indices, axis=0)
 
             population = np.delete(population, batch_indices, axis=0)
 
@@ -525,6 +530,7 @@ class CellParameters(WyckoffSymmetries):
                         symprec=1e-5)
         if not primitive_cell:
             if not len(relative_positions) == len(atoms):
+                print('Warning: number of atoms changed')
                 return None
         return atoms
 
@@ -585,6 +591,8 @@ class CellParameters(WyckoffSymmetries):
         if the optimize_wyckoffs parameter is set, the wyckoff coordinates 
         are optimized together with the lattice constants. 
         """
+        if not atoms:
+            return atoms
 
         cell = atoms.cell
 
