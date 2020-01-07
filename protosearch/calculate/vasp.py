@@ -115,7 +115,6 @@ class VaspModel:
 
         modelstr = self.add_calc(modelstr)
 
-        modelstr = add_singlepoint(modelstr)
         modelstr = add_relaxations(modelstr)
 
         return modelstr
@@ -256,7 +255,7 @@ atoms = read('OUTCAR', ':')
 cell_change = atoms[-1].cell - atoms[0].cell
 
 n = 1
-while not np.isclose(cell_change, 0).all():
+while not np.isclose(cell_change, 0, rtol=1e-3).all():
     for file in ['INCAR', 'OUTCAR', 'out']:
         if os.path.isfile(file):
             os.rename('{}'.format(file), '{}.relax{}'.format(file, n))
