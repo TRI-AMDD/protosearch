@@ -53,17 +53,17 @@ class Workflow(PrototypeSQL):
 
         self.collected = True
 
-    def submit_atoms_batch(self, atoms_list, ncpus=1, calc_parameters=None,
+    def submit_atoms_batch(self, atoms_list, ncpus=None, calc_parameters=None,
                            **kwargs):
         """Submit a batch of calculations. Takes a list of atoms
         objects as input"""
         batch_no = self.get_next_batch_no()
         for atoms in atoms_list:
-            self.submit_atoms(atoms, ncpus, batch_no, calc_parameters,
-                              **kwargs)
+            self.submit_atoms(atoms, ncpus, batch_no,
+                              calc_parameters, **kwargs)
 
-    def submit_atoms(self, atoms, ncpus=1, batch_no=None, calc_parameters=None,
-                     **kwargs):
+    def submit_atoms(self, atoms, ncpus=None, batch_no=None,
+                     calc_parameters=None, **kwargs):
         """Submit a calculation for an atoms object"""
         PC = PrototypeClassification(atoms)
         prototype, cell_parameters = PC.get_classification()
@@ -84,7 +84,7 @@ class Workflow(PrototypeSQL):
                            'spacegroup': prototype['spacegroup'],
                            'wyckoffs': json.dumps(prototype['wyckoffs']),
                            'species': json.dumps(prototype['species']),
-                           'ncpus': ncpus}
+                           'ncpus': Sub.ncpus}
 
         key_value_pairs.update(kwargs)
 
@@ -93,7 +93,8 @@ class Workflow(PrototypeSQL):
 
         self.write_submission(key_value_pairs)
 
-    def submit_batch(self, prototypes, ncpus=1, calc_parameters=None, **kwargs):
+    def submit_batch(self, prototypes, ncpus=None,
+                     calc_parameters=None, **kwargs):
         """Submit a batch of calculations. Takes a list of prototype
         dicts as input"""
         batch_no = self.get_next_batch_no()
@@ -101,7 +102,7 @@ class Workflow(PrototypeSQL):
             self.submit(prototype, ncpus, batch_no, calc_parameters, **kwargs)
         self.write_status(last_batch_no=batch_no)
 
-    def submit(self, prototype, ncpus=1, batch_no=None, calc_parameters=None,
+    def submit(self, prototype, ncpus=None, batch_no=None, calc_parameters=None,
                **kwargs):
         """Submit a calculation for a prototype, generating atoms
         with build_bulk and enumerator"""
@@ -128,7 +129,7 @@ class Workflow(PrototypeSQL):
                            'spacegroup': BB.spacegroup,
                            'wyckoffs': json.dumps(BB.wyckoffs),
                            'species': json.dumps(BB.species),
-                           'ncpus': ncpus}
+                           'ncpus': Sub.ncpus}
 
         key_value_pairs.update(kwargs)
 
@@ -153,7 +154,8 @@ class Workflow(PrototypeSQL):
         for prototype in prototypes:
             self.submit(prototype)
 
-    def submit_id_batch(self, calc_ids, ncpus=1, calc_parameters=None, **kwargs):
+    def submit_id_batch(self, calc_ids, ncpus=None,
+                        calc_parameters=None, **kwargs):
         """Submit a batch of calculations. Takes a list of atoms
         objects db ids as input"""
         batch_no = self.get_next_batch_no()
@@ -161,7 +163,8 @@ class Workflow(PrototypeSQL):
             self.submit_id(calc_id, ncpus, batch_no, calc_parameters)
         self.write_status(last_batch_no=batch_no)
 
-    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None, **kwargs):
+    def submit_id(self, calc_id, ncpus=None, batch_no=None,
+                  calc_parameters=None, **kwargs):
         """
         Submit an atomic structure by id
         """
@@ -183,7 +186,7 @@ class Workflow(PrototypeSQL):
 
         key_value_pairs = {'path': Sub.excpath,
                            'submitted': 1,
-                           'ncpus': ncpus}
+                           'ncpus': Sub.ncpus}
 
         if batch_no is not None:
             key_value_pairs.update({'batch': batch_no})
@@ -347,7 +350,6 @@ class Workflow(PrototypeSQL):
                 resubmit = True
             if not resubmit:
                 if fail_reason == 'ase read':
-                    print('hep')
                     atoms = ase.io.read(d.runpath + '/OUTCAR')
                     calcid = self.save_completed_calculation(atoms,
                                                              d.runpath,
@@ -355,7 +357,7 @@ class Workflow(PrototypeSQL):
                 else:
                     print('Job not resubmitted: {}'.format(fail_reason))
                 continue
-            ncpus = 1
+            ncpus = None
             if fail_reason == 'ncpus':
                 ncpus = d.get('ncpus', 1) * 2
             elif fail_reason == 'ase read':
@@ -387,7 +389,6 @@ class Workflow(PrototypeSQL):
         self._initialize(con)
 
         for row in self.ase_db.select(relaxed=1):
-            print(row.id)
 
             PC = PrototypeClassification(row.toatoms())
             prototype, cell_parameters = PC.get_classification()
@@ -449,7 +450,8 @@ class DummyWorkflow(Workflow):
         # print("Not actually calling trisync here")
         return(None)
 
-    def submit_id(self, calc_id, ncpus=1, batch_no=None, calc_parameters=None):
+    def submit_id(self, calc_id, ncpus=None,
+                  batch_no=None, calc_parameters=None):
         """
         Submit an atomic structure by id
         """
@@ -543,11 +545,11 @@ def vasp_errors(error):
     elif "local variable 'forces' referenced before assignment" in error:
         return True, 'Symmetry error'
     elif 'could not convert string to float' in error:
-        return False, 'ase read'
+        return True, 'ase read'
     elif 'local variable forces referenced before assignment' in error:
-        return False, 'ase read'
+        return True, 'ase read'
     elif 'invalid literal for float()' in error:
-        return False, 'ase read'
+        return True, 'ase read'
     else:
         return False, ''
 
