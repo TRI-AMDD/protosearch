@@ -18,8 +18,8 @@ class VaspStandards():
     io/vasp/MPRelaxSet.yaml
     """
 
-    # is kspacing = 0.25 compatible with materials project reciprocal_density = 64?
-    # (1 / 64) ** (1/3) = 0.25  ?
+    # is kspacing = 0.25 compatible with materials project
+    # reciprocal_density = 64? (1 / 64) ** (1/3) = 0.25  ?
     calc_parameters = {'xc': 'pbe',
                        'encut': 520,  # energy cutoff for plane waves
                        'nbands': -5,  # number of bands / empty bands
