@@ -235,13 +235,19 @@ def clean_features(features, scale=False):
     features = clean_variance(features['train'],
                               features['test'])
 
-    # Clean skewness
-    features = clean_skewness(features['train'],
-                              features['test'],
-                              skewness=3)
+    # Clean skewness & standardize
+    if features['test'] is None or len(features['test']) == 0:
+        features = clean_skewness(features['train'],
+                                  skewness=3)
+        if scale:
+            features = standardize(features['train'])
 
-    if scale:
-        features = standardize(features['train'],
-                               features['test'])
+    else:
+        features = clean_skewness(features['train'],
+                                  features['test'],
+                                  skewness=3)
+        if scale:
+            features = standardize(features['train'],
+                                   features['test'])
 
     return features, remove_indices
