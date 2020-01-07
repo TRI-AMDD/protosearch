@@ -18,8 +18,7 @@ class CatLearnGP:
                  targets,
                  kernel_type='gaussian',
                  kernel_width=3,
-                 kernel_scaling=1.,
-                 kernel_dimension='single',
+                 kernel_dimension='features',
                  regularization=3e-2,
                  optimize_hyperparameters=True,
                  scale_data=True):
@@ -29,13 +28,7 @@ class CatLearnGP:
 
         kernel_list = [{'type': kernel_type,
                         'width': kernel_width,
-                        'scaling': kernel_scaling,
                         'dimension': kernel_dimension}]
-
-        kernel_list += [{'type': 'noise_multi',
-                         'hyperparameters': [0.005, 0.0005],
-                         'bounds': ((0.001, 0.005),
-                                    (0.0005, 0.002),)}]
 
         self.GP = GaussianProcess(
             train_fp=features,
