@@ -27,7 +27,7 @@ class ActiveLearningLoop:
                  min_wyckoff=None,
                  max_wyckoff=None,
                  enumeration_type='wyckoff',
-                 check_frequency=60.,
+                 check_frequency=300.,
                  frac_jobs_limit=0.7,
                  stop_mode="job_fraction_limit",
                  spacegroups=None
@@ -78,7 +78,7 @@ class ActiveLearningLoop:
 
         self.db_filename = '_'.join(chemical_formulas) + '.db'
         self.Workflow = Workflow(db_filename=self.db_filename)
-        #self.DB = self.Workflow.#PrototypeSQL(self.db_filename)
+
         self.Workflow.write_status(
             chemical_formulas=chemical_formulas, batch_size=batch_size)
 
@@ -124,7 +124,7 @@ class ActiveLearningLoop:
                 else:
                     stoich += ['1']
             self.stoichiometries += ['_'.join(stoich)]
-        print(self.stoichiometries)
+
         self.elements = elements
 
     def monitor_submissions(self, batch_size, **kwargs):
@@ -290,7 +290,6 @@ class ActiveLearningLoop:
         # Map chemical formula to elements
         if self.source == 'prototypes':
             for stoichiometry in self.stoichiometries:
-                print(stoichiometry)
                 self.enumerate_prototypes(stoichiometry,
                                           spacegroups)
 
@@ -381,10 +380,10 @@ class ActiveLearningLoop:
         fingerprints_df = fingerprints_df.astype({'id': int})
 
         self.Workflow.write_dataframe(table='fingerprint',
-                                df=fingerprints_df)
+                                      df=fingerprints_df)
 
         self.Workflow.write_dataframe(table='target',
-                                df=targets_df)
+                                      df=targets_df)
 
     def save_formation_energies(self):
         ase_db = self.Workflow.ase_db
@@ -396,9 +395,9 @@ class ActiveLearningLoop:
             ref_energies = []
             for i, e in enumerate(elements):
                 ref_row = list(self.Workflow.ase_db.select(e,
-                                                     relaxed=1,
-                                                     standard_state=1,
-                                                     limit=1))
+                                                           relaxed=1,
+                                                           standard_state=1,
+                                                           limit=1))
                 if len(ref_row) == 0:
                     print('Standard state for {} not found'.format(row.formula))
                     if e == 'O':
@@ -410,7 +409,7 @@ class ActiveLearningLoop:
             formation_energy = (energy - sum(ref_energies)) / row.natoms
             ase_db.update(id=row.id, Ef=formation_energy)
 
-    def get_ml_prediction(self, model='catlearn'):
+    def get_features(self, scale=False):
         train_features = self.Workflow.load_dataframe(
             'fingerprint', ids=self.train_ids)
 
@@ -427,20 +426,28 @@ class ActiveLearningLoop:
 
         features, bad_indices = \
             clean_features({'train': train_features.values,
-                            'test': test_features.values})
+                            'test': test_features.values},
+                           scale=scale)
 
         self.train_ids = np.delete(self.train_ids, bad_indices['train'])
         self.targets = np.delete(self.targets, bad_indices['train'])
         self.test_ids = np.delete(self.test_ids, bad_indices['test'])
 
+        return features
+
+    def get_ml_prediction(self, model='catlearn'):
+        features = self.get_features()
+
         Model = get_regression_model(model)(features['train'],
                                             self.targets)
+
         predictions = Model.predict(features['test'])
 
         self.energies = predictions['prediction']
         index = [i for i in range(len(self.test_ids))
                  if np.isfinite(self.energies[i])]
         self.test_ids = np.array(self.test_ids)[index]
+        self.energies = self.energies[index]
         self.uncertainties = predictions['uncertainty'][index]
 
     def acquire_batch(self, method='UCB', kappa=0.5, batch_size=None):
