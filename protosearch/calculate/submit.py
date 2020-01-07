@@ -11,8 +11,8 @@ from .vasp import get_poscar_from_atoms
 
 class TriSubmit():
     """
-    Set up (VASP) calculations on TRI-AWS for bulk structure enumerated with the
-    Bulk prototype enumerator developed by A. Jain described in:
+    Set up (VASP) calculations on TRI-AWS for bulk structure enumerated
+    with the Bulk prototype enumerator developed by A. Jain, described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
     Parameters:
@@ -43,8 +43,8 @@ class TriSubmit():
 
     def __init__(self,
                  atoms,
-                 ncpus=1,
-                 queue='small',
+                 ncpus=None,
+                 queue='medium',
                  calculator='vasp',
                  calc_parameters=None,
                  basepath=None,
@@ -76,6 +76,9 @@ class TriSubmit():
                                          ext=basepath_ext)
 
         self.calculator = calculator
+        if ncpus is None:
+            ncpus = get_ncpus_from_volume(atoms)
+
         self.ncpus = ncpus
         self.queue = queue
 
@@ -170,3 +173,7 @@ class TriSubmit():
 
         with open(filepath + '/model_clean.py', 'w') as f:
             f.write(modelstr)
+
+def get_ncpus_from_volume(atoms):
+    ncpus = int((atoms.get_volume() / 80 // 4) * 4)
+    return max(ncpus, 1)
