@@ -14,7 +14,9 @@ class TriSubmitTest(unittest.TestCase):
         self.submitter = TriSubmit(atoms,
                                    basepath_ext='tests',
                                    calc_parameters={'encut': 300,
-                                                    'kspacing': 30}
+                                                    'kspacing': 0.5},
+                                   ncpus=1,
+                                   queue='small'
                                    )
         self.pwd = os.getcwd()
         self.tempdir = tempfile.mkdtemp()
