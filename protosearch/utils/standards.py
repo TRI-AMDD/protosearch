@@ -7,9 +7,8 @@ class VaspStandards():
     # Parameters to that will be tracked in parameterized model
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
-                              'nsw', 'nelm', 'ediff', 'ediffg']
-
-    fixed_parameters = ['prec', 'algo', 'lwave']
+                              'nsw', 'nelm', 'ediff', 'ediffg', 'prec',
+                              'algo', 'lwave', 'lorbit']
 
     u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj']
 
@@ -24,16 +23,16 @@ class VaspStandards():
                        'encut': 520,  # energy cutoff for plane waves
                        'nbands': -5,  # number of bands / empty bands
                        'ispin': 2,  # number of spins
-                       'kspacing': 25,  # kspacing in units of 0.01
+                       'kspacing': 0.25,  # kspacing
                        'kgamma': True,  # include gamma point
                        'ismear': -5,  # smearing function
-                       'sigma': 5,  # k-point smearing in units of 0.01
+                       'sigma': 0.05,  # k-point smearing
                        'ibrion': 2,  # ion dynamics
                        'isif': 3,  # degrees of freedom to relax
                        'nsw': 99,  # maximum number of ionic steps
                        'nelm': 100,  # maximum number of electronic steps
-                       'ediff': 10,  # sc accuracy in units of 1e-6
-                       'ediffg': 20,  # force convergence in units of 1e-3
+                       'ediff': 1e-5,  # sc accuracy in units of 1e-6
+                       'ediffg': -0.02,  # force convergence accuracy
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
                        'lwave': False,  # save wavefunctions or not
@@ -41,18 +40,12 @@ class VaspStandards():
                        'lmaxmix': 4,
                        'ldautype': 2,
                        'ldau_luj': {},
+                       'lorbit': 11,
                        }
     molecule_calc_parameters = {'kspacing': None,
                                 'ismear': 0,
                                 'sigma': 1}
 
-    # parameters are submitted as an integer,
-    # that will be multiplied by the factor below
-    calc_decimal_parameters = {'kspacing': 0.01,
-                               'sigma': 0.01,
-                               'ediff': 1e-6,
-                               'ediffg': -1e-3,
-                               }
 
     paw_potentials = {'Li': '_sv',
                       'Na': '_pv',
