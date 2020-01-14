@@ -4,31 +4,30 @@ import tempfile
 import unittest
 
 from protosearch.build_bulk.build_bulk import BuildBulk
-from protosearch.calculate.submit import TriSubmit
+from protosearch.calculate.submit import TriSubmit, NerscSubmit
 from protosearch.calculate.vasp import VaspModel
 
 
-class TriSubmitTest(unittest.TestCase):
-    def test_write_simpel_model(self):
-        self.bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
-        self.submitter = TriSubmit(self.bb_iron.atoms,
-                                   basepath_ext='tests')
-
-        self.submitter.write_simple_model('.')
+class SubmitTest(unittest.TestCase):
 
     def test_write_model(self):
-        self.bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
-        self.submitter = TriSubmit(self.bb_iron.atoms,
+        bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
+        atoms = bb_iron.get_atoms()
+        self.submitter = TriSubmit(atoms,
                                    basepath_ext='tests')
 
         self.submitter.write_model('.')
 
-    def test_write_model_source(self):
-        Model = VaspModel(calc_parameters=None,
-                          symbols=['Mn', 'O'])
-        modelstr = Model.get_model()
-        with open('model_clean_source.py', 'w') as f:
-            f.write(modelstr)
+    def test_write_model_nersc(self):
+        bb_iron = BuildBulk(225, ['a', 'c'], ['Mn', 'O'])
+        atoms = bb_iron.get_atoms()
+        submitter = NerscSubmit(atoms,
+                                account='projectname',
+                                basepath='.')
+
+        submitter.set_execution_path(strict_format=False)
+        submitter.write_submission_files()
+        submitter.write_submit_script()
 
 
 if __name__ == '__main__':
