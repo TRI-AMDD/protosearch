@@ -1,43 +1,35 @@
-__authors__ = "Raul A. Flores; Kirsten Winther; Meng Zhao"
-
-from protosearch.build_bulk.classification import get_classification
-from protosearch.build_bulk.cell_parameters import CellParameters
-from ast import literal_eval
-from ase.db import connect
-from tqdm import tqdm
-from pymatgen.core.composition import Composition
-from ase.symbols import string2symbols
+import numpy as np
+import json
 import string
-import copy
+from ase import Atoms
+from ase.db import connect
+from ase.formula import Formula
+from ase.symbols import string2symbols
 import pandas as pd
-pd.options.mode.chained_assignment = None  # default='warn'
+
+from protosearch.utils.data import metal_numbers
+from protosearch.workflow.prototype_db import PrototypeSQL
+from protosearch import build_bulk
+from .fitness_function import get_connections
+from .spglib_interface import SpglibInterface
+from .cell_parameters import CellParameters
+
+
+path = build_bulk.__path__[0]
 
 
 class OqmdInterface:
     """Interace to OQMD data to create structurally unique atoms objects"""
 
-    def __init__(self,
-                 dbfile,
-                 verbose=False,
-                 ):
-        """Set up OqmdInterface.
-
-        Parameters
-        ----------
-
-        dbfile: str (filepath)
-            filepath of oqmd databae file (available upon request from S3)
-
-        verbose: bool
-            Switches verbosity of module (not implemented fully now)
-        """
-        self.dbfile = dbfile
-        self.verbose = verbose
+    def __init__(self, source='icsd'):
+        if source == 'icsd':
+            self.dbfile = path + '/oqmd_icsd_new.db'
+        else:
+            raise NotImplementedError('Only ICSD structure source impemented')
 
     def create_proto_data_set(self,
                               chemical_formula,
-                              source=None,
-                              repetition=None):
+                              max_atoms=None):
         """Create a dataset of unique prototype structures.
 
         Creates a unique set of structures of uniform stoicheometry and
@@ -46,401 +38,308 @@ class OqmdInterface:
 
         Parameters
         ----------
-
         chemical_formula: str
             desired chemical formula with elements inserted (ex. 'Al2O3')
 
-        source: str
-          oqmd project name, such as 'icsd'
-
-        repetition: int
-          repetition of the stiochiometry
+        max_atoms: int
+          maximum number of atoms in the primitive unit cell
         """
-        dbfile = self.dbfile
-        # verbose = self.verbose
 
-        # Argument Checker
+        distinct_protonames += \
+            self.get_distinct_prototypes(
+                chemical_formula=chemical_formula,
+                max_atoms=max_atoms)
 
-        mess_i = "Formula must be given as a string"
-        assert type(chemical_formula) == str, mess_i
-        stoich_formula = formula2elem(chemical_formula)
-
-        # elem_list, compos, stoich_formula, elem_list_ordered = formula2elem(
-        #     chemical_formula)
-
-        formula = stoich_formula
-        # elements = elem_list_ordered
-
-        relev_id_list = self.__get_relevant_ids__(formula, source, repetition)
-
-        db = connect(dbfile)
         data_list = []
-        for id_i in relev_id_list:
-            row_i = db.get(selection=id_i)
 
-            # Procesing data dict since objects are stored as strings
-            # (literal_eval needed)
-            data_dict_0 = {}
-            for key_i, value_i in row_i.data.items():
-                data_dict_0[key_i] = literal_eval(value_i)
+        for proto_name in distinct_protonames:
+            data_list += self.get_atoms_for_prototype(chemical_formula,
+                                                      proto_name)
 
-            data_dict_1 = {
-                "id": row_i.id,
-                "protoname": row_i.proto_name,
-                "formula": row_i.formula,
-                "spacegroup": row_i.spacegroup}
-
-            data_dict_out = {**data_dict_0, **data_dict_1}
-            data_list.append(data_dict_out)
         df = pd.DataFrame(data_list)
 
-        def choose_structure_from_group_of_identical_prototypes():
-            """
-            Filler method, can put more logic behind picking specific structure
-            from a group of strucutres of the same prototype
-            """
-            tmp = 42
+        return df
 
-        data_list = []
-        groups = df.groupby("protoname")
-        for protoname_i, group_i in tqdm(groups):
-            struct_in_db_i = self.__structure_in_database__(
-                group_i, chemical_formula, "bool")
-            if struct_in_db_i:
-                row_i = self.__structure_in_database__(
-                    group_i, chemical_formula, "return_structure")
+    def store_enumeration(self, filename, chemical_formula, max_atoms=None):
+        """ Saves the enumerated prototypes and atomic species in a database"""
 
-                db_row_i = db.get(selection=int(row_i["id"]))
-                atoms_i = db_row_i.toatoms()
-            else:
-                # Just returning the 'first' structure in the group and doing
-                # an atom replacement
-                row_i = group_i.iloc[0]
-                atoms_i = self.__create_atoms_object_with_replacement__(
-                    row_i, chemical_formula=chemical_formula)
+        distinct_protonames = \
+            self.get_distinct_prototypes(
+                chemical_formula=chemical_formula,
+                max_atoms=max_atoms)
 
-            sys_dict_i = {
-                "proto_name": row_i["protoname"],
-                "atoms": atoms_i,
-                "existing_structure": struct_in_db_i}
-            data_list.append(sys_dict_i)
+        for proto_name in distinct_protonames:
+            data_list = self.get_atoms_for_prototype(chemical_formula,
+                                                     proto_name)
 
-        df_out = pd.DataFrame(data_list)
+            DB = PrototypeSQL(filename=filename)
 
-        return(df_out)
+            for d in data_list:
+                atoms = d.pop('atoms')
 
-    def __structure_in_database__(self, group_i, chemical_formula, mode):
-        """Looks for existing structure in the db"""
-        group_i["pymatgen_comp"] = group_i.apply(
-            lambda x: Composition(x["formula"]), axis=1)
-        same_formula = group_i[
-            group_i["pymatgen_comp"] == Composition(chemical_formula)]
+                formula = d.pop('chemical_formula')
+                original_formula = d.pop('original_formula')
 
-        if len(same_formula) != 0:
-            structure_exists = True
+                # Same format as Enumerator output
+                entry = d.copy()
+                entry['spaceGroupNumber'] = entry.pop('spacegroup')
+                entry['name'] = entry.pop('p_name')
+                entry['parameters'] = {}
+
+                structure_name = d['structure_name']
+
+                print('Writing structure:', structure_name)
+
+                # Save prototype
+                DB.write_prototype(entry=entry)
+
+                if DB.ase_db.count(structure_name=structure_name) > 0:
+                    continue
+
+                key_value_pairs = \
+                    {'p_name': d['p_name'],
+                     'spacegroup': d['spacegroup'],
+                     'permutations': json.dumps(d['specie_permutations']),
+                     'wyckoffs': json.dumps(d['wyckoffs']),
+                     'species': json.dumps(d['species']),
+                     'structure_name': structure_name,
+                     'relaxed': 0,
+                     'completed': 0,
+                     'submitted': 0}
+
+                # Save structure
+                DB.ase_db.write(atoms, key_value_pairs)
+
+    def get_atoms_for_prototype(self,
+                                chemical_formula,
+                                proto_name,
+                                fix_metal_ratio=False,
+                                must_contain_nonmetal=False,
+                                max_candidates=1):
+
+        oqmd_db = connect(self.dbfile)
+
+        atoms0 = Atoms(chemical_formula)
+        numbers0 = atoms0.numbers
+        symbols0 = atoms0.get_chemical_symbols()
+
+        metal_count = len([n for n in numbers0 if n in metal_numbers])
+        metal_ratio_0 = metal_count / len(numbers0)
+        nonmetals_idx = [i for i, n in enumerate(numbers0)
+                         if not n in metal_numbers]
+        nonmetals_symbols = ''.join(np.array(symbols0)[nonmetals_idx])
+
+        if must_contain_nonmetal:
+            structures = list(oqmd_db.select(nonmetals_symbols,
+                                             proto_name=proto_name))
         else:
-            structure_exists = False
+            structures = list(oqmd_db.select(proto_name=proto_name))
 
-        if len(same_formula) > 1:
-            print("There is more than 1 structure in the database for the",
-                  " given prototype and chemical formula")
-            print("Just using the 'first' one for now")
+        if len(structures) == 0:
+            return []
 
-        if mode == "bool":
-            return(structure_exists)
-        elif mode == "return_structure":
-            return(same_formula.iloc[0])
+        formulas = [Formula(s.formula).reduce()[0].format('metal')
+                    for s in structures]
+        chemical_formula = Formula(chemical_formula).format('metal')
+        if chemical_formula in formulas:
+            idx = formulas.index(chemical_formula)
+            structures = structures[idx:] + structures[:idx]
 
-    def __get_relevant_ids__(self,
-                             formula,
-                             source,
-                             repetition,
-                             ):
-        """
-        """
-        distinct_protonames = self.get_distinct_prototypes(
-            formula=formula,
-            source=source,
-            repetition=repetition)
+        atoms_data = []
 
-        if self.verbose:
-            print("Number of unique prototypes: ")
-            print(len(distinct_protonames))
+        for s in structures:
+            atoms = s.toatoms()
+            old_species = np.array(s.data['species'], dtype='U2')
+            old_symbols = atoms.get_chemical_symbols()
+            orig_formula = Formula(atoms.get_chemical_formula()).reduce()[
+                0].format('metal')
+            metal_count = len([n for n in atoms.numbers if n in metal_numbers])
+            metal_ratio = metal_count / len(atoms)
+            if fix_metal_ratio and not metal_ratio == metal_ratio_0:
+                continue
 
-        str_tmp = ""
-        for i in distinct_protonames:
-            str_tmp += "'" + i + "', "
-        str_tmp = str_tmp[0:-2]
+            atoms_sub_list = self.substitute_atoms(atoms, symbols0)
+            graphs = []
+            for atoms in atoms_sub_list:
+                new_symbols = atoms.get_chemical_symbols()
+                new_species = old_species.copy()
+                for i in range(len(new_symbols)):
+                    os = old_symbols[i]
+                    idx = [i for i, o in enumerate(old_species) if o == os]
+                    if idx:
+                        new_species[idx] = [new_symbols[i]] * len(idx)
 
-        db = connect(self.dbfile)
 
-        con = db.connection or db._connect()
+                graphs += [get_connections(atoms, decimals=1)]
+                # Get spacegroup and conventional atoms
+                SPG = SpglibInterface(atoms)
+                atoms = SPG.get_conventional_atoms()
+                spacegroup = SPG.get_spacegroup()
 
-        sql_comm = "SELECT value,id FROM text_key_values WHERE key='proto_name' and value in (" + \
-            str_tmp + ")"
-        df_text_key_values = pd.read_sql_query(
-            sql_comm,
-            con)
+                structure_name = str(spacegroup)
+                for spec, wy_spec in zip(new_species, s.data['wyckoffs']):
+                    structure_name += '_{}_{}'.format(spec, wy_spec)
 
-        relev_id_list = df_text_key_values["id"].tolist()
-        return(relev_id_list)
+                # Set new lattice constants
+                CP = CellParameters(spacegroup=spacegroup)
+                atoms = CP.optimize_lattice_constants(atoms)
 
-    def __create_atoms_object_with_replacement__(self,
-                                                 sys_dict_i,
-                                                 chemical_formula=None):
-        """
+                # Get primitive atoms
+                atoms = SPG.get_primitive_atoms(atoms)
 
-        Parameters
-        ----------
-        sys_dict_i: pandas.Series or dict
-          Row of dataframe that contains the following keys:
-            spacegroup
-            wyckoffs
-            species
-            param
+                atoms_data += [{'spacegroup': spacegroup,
+                                'wyckoffs': s.data['wyckoffs'],
+                                'species': list(new_species),
+                                'structure_name': structure_name,
+                                'natom': len(atoms),
+                                'specie_permutations': s.data['permutations'],
+                                'p_name': proto_name,
+                                'chemical_formula': chemical_formula,
+                                'original_formula': orig_formula,
+                                'atoms': atoms.copy()}]
 
-        user_elems: list
-        """
-        spacegroup_i = sys_dict_i["spacegroup"]
-        prototype_wyckoffs_i = sys_dict_i["wyckoffs"]
-        prototype_species_i = sys_dict_i["species"]
-        init_params = sys_dict_i["param"]
-        formula = sys_dict_i["formula"]
+            if len(atoms_data) >= max_candidates:
+                break
 
-        elem_mapping_dict = self.get_elem_mapping(chemical_formula, formula)
+        #graphs = [get_connections(data['atoms'], decimals=1)
+        #          for data in atoms_data]
 
-        # Preparing new atom substituted element list
-        new_elem_list = []
-        for i in prototype_species_i:
-            new_elem_list.append(
-                elem_mapping_dict.get(i, i))
+        indices = [i for i in range(len(atoms_data))
+                   if not np.any(graphs[i] in graphs[:i])]
 
-        # #####################################################################
-        # Preparing Initial Wyckoff parameters to pass to the
-        # CellParameters Code
+        graphs = [graphs[i] for i in indices]
+        atoms_data = [atoms_data[i] for i in indices]
 
-        # Removing lattice constant parameters, so CellParameters will only
-        # optimize the parameters that aren't included in this list
-        # lattice angles and wyckoff positions
-        non_wyck_params = [
-            "a", "b", "c",
-            "b/a", "c/a",
-            # "alpha", "beta", "gamma",
-        ]
+        return atoms_data
 
-        init_wyck_params = copy.copy(init_params)
-        for param_i in non_wyck_params:
-            if param_i in list(init_wyck_params.keys()):
-                del init_wyck_params[param_i]
+    def substitute_atoms(self, atoms, new_symbols):
+        """ Substitute new elements into atoms object"""
 
-        try:
-            # Using CellParameters Code
-            CP = CellParameters(
-                spacegroup=spacegroup_i,
-                wyckoffs=prototype_wyckoffs_i,
-                species=new_elem_list,
-                verbose=False,
-            )
+        formula = atoms.get_chemical_formula()
+        rep = Formula(formula).reduce()[1]
 
-            parameters = CP.get_parameter_estimate(
-                master_parameters=init_wyck_params)
-            atoms_opt = CP.get_atoms(fix_parameters=parameters,
-                                     primitive=True)
-            out = atoms_opt
-        except RuntimeError:
-            out = None
+        chemical_symbols = np.array(atoms.get_chemical_symbols(), dtype='U2')
 
-        return(out)
+        unique_old, counts_old = np.unique(
+            chemical_symbols, return_counts=True)
+        counts_old = counts_old / rep
+
+        idx = np.argsort(counts_old)
+        counts_old = counts_old[idx]
+        unique_old = unique_old[idx]
+        unique_new, counts_new = np.unique(new_symbols, return_counts=True)
+
+        idx = np.argsort(counts_new)
+        counts_new = counts_new[idx]
+        unique_new = unique_new[idx]
+
+        new_perm_temp = [[]]
+
+        for i, c in enumerate(counts_new):
+            perm_temp = []
+            same_count = np.where(counts_new == c)[0]
+
+            new_perm = []
+            for temp in new_perm_temp:
+                for i2 in same_count:
+                    sym = unique_new[i2]
+                    if not sym in temp:
+                        new_perm += [temp + [sym]]
+
+            new_perm_temp = new_perm.copy()
+
+        old_symbols = chemical_symbols.copy()
+
+        atoms_list = []
+        for unique_new in new_perm:
+            atoms_temp = atoms.copy()
+
+            for i, old_s in enumerate(unique_old):
+                loc_symbols = [i for i, s in enumerate(
+                    old_symbols) if s == old_s]
+                chemical_symbols[loc_symbols] = np.repeat(
+                    [unique_new[i]], len(loc_symbols))
+
+            atoms_temp.set_chemical_symbols(chemical_symbols)
+            atoms_list += [atoms_temp.copy()]
+
+        return atoms_list
 
     def ase_db(self):
         self.db = connect(self.dbfile)
 
     def get_distinct_prototypes(self,
-                                source=None,
-                                formula=None,
-                                repetition=None):
+                                chemical_formula=None,
+                                max_atoms=None):
         """ Get list of distinct prototype strings given certain filters.
 
         Parameters
         ----------
-        source: str
-          oqmd project name, such as 'icsd'
         formula: str
           stiochiometry of the compound, f.ex. 'AB2' or AB2C3
         repetition: int
           repetition of the stiochiometry
         """
-
         db = connect(self.dbfile)
-
         con = db.connection or db._connect()
         cur = con.cursor()
 
         sql_comm = \
             "select distinct value from text_key_values where key='proto_name'"
-        if formula:
-            if repetition:
-                formula += '\_{}'.format(repetition)
 
-            sql_comm += " and value like '{}\_%' ESCAPE '\\'".format(formula)
+        if chemical_formula is None:
+            cur.execute(sql_comm)
+            prototypes_rep = cur.fetchall()
+            prototypes += [p[0] for p in prototypes_rep]
 
-        if source:
-            sql_comm += " and id in (select id from text_key_values where key='source' and value='icsd')"
-        cur.execute(sql_comm)
+            return prototypes
 
-        prototypes = cur.fetchall()
-        prototypes = [p[0] for p in prototypes]
+        # Transform formula to general 'AB2C3' format
+        formula, elements = get_stoich_formula(chemical_formula)
+
+        repetitions = [0]
+        if max_atoms is not None:
+            natoms_formula = len(Atoms(chemical_formula))
+            r = 1
+            while (repetitions[-1] + 1) * natoms_formula <= max_atoms:
+                repetitions += [r]
+                r += 1
+            del repetitions[0]
+
+        prototypes = []
+        for r in repetitions:
+            if r == 0:  # all repetitions
+                match_formula = formula
+            else:
+                match_formula = formula + '\_{}'.format(r)
+            full_sql_comm = sql_comm + \
+                " and value like '{}\_%' ESCAPE '\\'".format(match_formula)
+
+            cur.execute(full_sql_comm)
+
+            prototypes_rep = cur.fetchall()
+            prototypes += [p[0] for p in prototypes_rep]
 
         return prototypes
 
-    def get_parameters_for_prototype(self, proto_name, formula=None):
-        """
-        Get parameters, i.e. lattice constants and Wyckoff coordinates
-        from OQMD entries
-        If the same formula is available, that structure will be chosen.
-        Otherwise, any material with that prototype will be chosen.
-        Note that, in this case, a new guess for the lattice constants
-        should be made.
-        """
-        db = connect(self.dbfile)
 
-        parameter_dict = None
-        same_formula = False
-
-        if formula:
-            for row in db.select(formula=formula, proto_name=protoname, limit=1):
-                atoms = row.toatoms()
-                formula = row.formula
-                prototype, parameter_dict = get_classification(atoms)
-
-        if not parameter_dict:
-            for row in db.select(proto_name=protoname, limit=1):
-                atoms = row.toatoms()
-                formula = row.formula
-                prototype, parameter_dict = get_classification(atoms)
-
-        return formula, parameter_dict
-
-    def get_elem_mapping(self, formula0, formula1):
-        """
-        Parameters
-        ----------
-        formula0: str
-          Primary chemical formula, formula1 will be transformed into
-          formula0's element types
-          Will be dict values of output
-
-        formula1: str
-          Secondary chemical formula, species will be transformed into the
-          corresponding element of formula0
-        """
-        special_formulas = {
-            "Li2O2": {"Li": 1, "O": 1},
-            "Na2O2": {"Na": 1, "O": 1},
-            "K2O2": {"K": 1, "O": 1},
-            "H2O2": {"H": 1, "O": 1},
-            "Cs2O2": {"Cs": 1, "O": 1},
-            "Rb2O2": {"Rb": 1, "O": 1},
-            "O2": {"O": 1},
-            "N2": {"N": 1},
-            "F2": {"F": 1},
-            "Cl2": {"Cl": 1},
-            "H2": {"H": 1},
-        }
-
-        comp0 = Composition(formula0)
-        comp1 = Composition(formula1)
-
-        if comp0.reduced_formula in special_formulas:
-            Comp0 = special_formulas[comp0.reduced_formula]
-        else:
-            Comp0 = comp0.to_data_dict["reduced_cell_composition"]
-        if comp1.reduced_formula in special_formulas:
-            Comp1 = special_formulas[comp1.reduced_formula]
-        else:
-            Comp1 = comp1.to_data_dict["reduced_cell_composition"]
-
-        mess_i = "Not the same number of element types in both species"
-        assert len(Comp0) == len(Comp1), mess_i
-
-        # ##############################################################
-        num_species = len(Comp0)
-        num_unique_stoich = len(list(set(list(Comp0.values()))))
-        if num_unique_stoich != num_species:
-            if self.verbose:
-                print(
-                    "The formula has two species with the same stoicheometry",
-                    " (ex. A2B4C4)." + "\n",
-                    "This results in a little ambiguity as to how to replace",
-                    " the atoms into these species." + "\n",
-                    " This should be implemented better in the future." + "\n",
-                    "Raul A. Flores (190428)",
-                )
-
-        df_0 = pd.DataFrame(
-            data={
-                "keys": list(Comp0.keys()),
-                "vals": list(Comp0.values())},
-            index=None).sort_values("vals", axis=0)
-
-        df_1 = pd.DataFrame(
-            data={
-                "keys": list(Comp1.keys()),
-                "vals": list(Comp1.values())},
-            index=None).sort_values("vals", axis=0)
-
-        mess_i = "Stoicheometries don't match!!! (ex. A2B4C3 != A2B5C3)"
-        assert df_0["vals"].tolist() == df_1["vals"].tolist(), mess_i
-
-        elem_mapping_dict = dict(zip(
-            df_1["keys"].tolist(),
-            df_0["keys"].tolist()))
-
-        return(elem_mapping_dict)
-
-
-def formula2elem(formula):
-    '''
-    convert plain chemical formula to element list with their composition and
-    the element agnostic chemical formula.
-
-    arg: formula(str)
-    return:
-    elem_list(list): element list
-    compos(dict): composition for elements
-    stoich_formula(str): Stoicheometric representation of the chemical formula
-    '''
+def get_stoich_formula(formula, return_elements=True):
+    """Get element independent stoichiometry formula
+    i.e. TiO2 -> AB2"""
+    alphabet = list(string.ascii_uppercase)
     elem_list = string2symbols(formula)
 
-    compos = {}
-    uniq = set(elem_list)
-    for symbol in uniq:
-        compos.update({symbol: elem_list.count(symbol)})
+    unique_symbols, counts = np.unique(elem_list, return_counts=True)
 
-    # Creating stoicheometric repr of formula (i.e. AB2 not FeO2)
-    data_list = []
-    for key_i, value_i in compos.items():
-        data_list.append(
-            {"element": key_i,
-             "stoich": value_i})
+    sorted_idx = np.argsort(counts)
 
-    df_sorted = pd.DataFrame(data_list).sort_values("stoich")
-    df_sorted["fill_symbol"] = list(string.ascii_uppercase[0:len(df_sorted)])
-
-    # List of elements ordered by highest stoich to lowest
-    # This method is getting a bit redundant but it's just to assure
-    # compatability with the way I wrote the module, can clean up later
-    # This includes the stoich_formula variable that I'm creating as well,
-    # it's also needed for my method
-
-    # elem_list_ordered = list(reversed(df_sorted["element"].tolist()))
-
-    stoich_formula = ""
-    for i_ind, row_i in df_sorted.iterrows():
-        stoich_formula += str(row_i["fill_symbol"])  # + str(row_i["stoich"])
-        if row_i["stoich"] == 1:
-            pass
+    formula = ''
+    for i, j in enumerate(sorted_idx):
+        if counts[j] > 1:
+            formula += alphabet[i] + str(counts[j])
         else:
-            stoich_formula += str(row_i["stoich"])
-
-    return(stoich_formula)
+            formula += alphabet[i]
+    if return_elements:
+        return formula, unique_symbols
+    else:
+        return formula
