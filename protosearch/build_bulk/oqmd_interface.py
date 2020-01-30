@@ -45,7 +45,7 @@ class OqmdInterface:
           maximum number of atoms in the primitive unit cell
         """
 
-        distinct_protonames += \
+        distinct_protonames = \
             self.get_distinct_prototypes(
                 chemical_formula=chemical_formula,
                 max_atoms=max_atoms)
