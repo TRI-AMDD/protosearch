@@ -9,7 +9,7 @@ from protosearch.utils.data import metal_numbers, prefered_O_state,\
 
 def expand_cell(atoms, cutoff=None, padding=None):
     """
-    Copy from Catkit connectivity utils. 
+    Copy from Catkit connectivity utils (written by Jacob Boes)
     Return Cartesian coordinates atoms within a supercell
     which contains repetitions of the unit cell which contains
     at least one neighboring atom.

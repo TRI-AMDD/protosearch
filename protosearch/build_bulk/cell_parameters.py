@@ -12,7 +12,6 @@ from ase.data import atomic_numbers as a_n
 from ase.data import covalent_radii as cradii
 from ase.geometry.geometry import wrap_positions
 from ase.spacegroup import crystal, get_spacegroup
-from catkit.gen.utils.connectivity import get_voronoi_neighbors, get_cutoff_neighbors
 
 from protosearch import build_bulk
 from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
