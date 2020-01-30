@@ -4,21 +4,23 @@ class CellStandards():
 
 
 class VaspStandards():
-    # Parameters to that will be tracked in parameterized model
+
+    """
+    Calculational settings for bulk calculations in VASP.
+    Energy cutoff, smearing and kpoints are matched to Material Project
+    standard settings at:
+    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/
+    io/vasp/MPRelaxSet.yaml
+    """
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
                               'nsw', 'nelm', 'ediff', 'ediffg', 'prec',
                               'algo', 'lwave', 'lorbit']
 
-    u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj']
+    u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj', 'ldauprint']
 
-    """Parameters are heavily inspired by MP standard settings at
-    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/
-    io/vasp/MPRelaxSet.yaml
-    """
-
-    # is kspacing = 0.25 compatible with materials project
-    # reciprocal_density = 64? (1 / 64) ** (1/3) = 0.25  ?
+    """ Assume that kspacing = 0.25 compatible with materials project
+    reciprocal_density = 64. (1 / 64) ** (1/3) = 0.25 """
     calc_parameters = {'xc': 'pbe',
                        'encut': 520,  # energy cutoff for plane waves
                        'nbands': -5,  # number of bands / empty bands
@@ -26,26 +28,30 @@ class VaspStandards():
                        'kspacing': 0.25,  # kspacing
                        'kgamma': True,  # include gamma point
                        'ismear': -5,  # smearing function
-                       'sigma': 0.05,  # k-point smearing
+                       'sigma': 0.05,  # Low value for k-point smearing
                        'ibrion': 2,  # ion dynamics
-                       'isif': 3,  # degrees of freedom to relax
+                       'isif': 3,  # allow all degrees of freedom to relax
                        'nsw': 99,  # maximum number of ionic steps
                        'nelm': 100,  # maximum number of electronic steps
-                       'ediff': 1e-5,  # sc accuracy in units of 1e-6
+                       # sc accuracy (MP has DIFF_PER_ATOM: 5.0e-05)
+                       'ediff': 1e-6,
                        'ediffg': -0.02,  # force convergence accuracy
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
-                       'lwave': False,  # save wavefunctions or not
+                       'lwave': False,  # Dont save wavefunctions
+                       'lreal': False,  # Dont use real space grids
+                       'lorbit': 11,  # Needed to write the magnetization
+                       'laechg': True,  # Needed to write the density
                        'ldau': True,  # USE U
-                       'lmaxmix': 4,
+                       'lmaxmix': 6,
                        'ldautype': 2,
                        'ldau_luj': {},
-                       'lorbit': 11,
+                       'ldauprint': 1,
                        }
+
     molecule_calc_parameters = {'kspacing': None,
                                 'ismear': 0,
-                                'sigma': 1}
-
+                                'sigma': 0.001}
 
     paw_potentials = {'Li': '_sv',
                       'Na': '_pv',
@@ -130,7 +136,8 @@ class CommonCalc():
              'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
              'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
              'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
-             'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
+             # MP U is very high. Others have used 3.0
+             'W':  {'L': 2, 'U': 6.2, 'J': 0.0},
              'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
              'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
 
@@ -138,6 +145,7 @@ class CommonCalc():
     for U in U_trickers:
         U_metals.remove(U)
 
+    # Set high initial moments like Materials Project
     initial_magmoms = {'Ce': 5,
                        'Co': 5,
                        'Cr': 5,
