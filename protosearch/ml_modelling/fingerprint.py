@@ -209,6 +209,10 @@ class VoronoiFingerprint:
     def generate_fingerprints(self):
         self.features = self.Voro_inst.generate()
 
+    def get_fingerprints(self):
+        self.generate_features()
+        return self.features
+
 
 def clean_features(features, scale=False):
     remove_indices = {'train': np.array([], dtype=int),
