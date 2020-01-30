@@ -2,13 +2,15 @@ import numpy as np
 import scipy
 from shapely.geometry import Polygon
 from ase.data import covalent_radii as cradii
-#from catkit.gen.utils.coordinates import expand_cell
 
 from protosearch.utils.data import metal_numbers, prefered_O_state,\
     favored_O_connections, electronegs
 
+
 def expand_cell(atoms, cutoff=None, padding=None):
-    """Return Cartesian coordinates atoms within a supercell
+    """
+    Copy from Catkit connectivity utils. 
+    Return Cartesian coordinates atoms within a supercell
     which contains repetitions of the unit cell which contains
     at least one neighboring atom.
 
@@ -74,11 +76,15 @@ def expand_cell(atoms, cutoff=None, padding=None):
 
     return index, coords, offsets
 
+
 def get_area_neighbors(atoms, cell_cutoff=15, cutoff=None,
                        return_std_con=False):
-    # Builds on top of CatKit connectivity matrix
-    """Return the connectivity matrix from the Voronoi
-    method weighted by the area of the Voronoi vertices.
+    """
+    Extention of the CatKit Voronoi connectivity.
+
+    Return the connectivity matrix from the Voronoi
+    method weighted by the area of the Voronoi vertices,
+    which changes smoothly with small geometry changes.
     Multi-bonding occurs through periodic boundary conditions.
 
     Parameters
@@ -169,8 +175,11 @@ def get_area_neighbors(atoms, cell_cutoff=15, cutoff=None,
         return connectivity, connectivity_int.astype(int)
 
 
-def get_voronoi_neighbors(atoms, cutoff=5.0, return_distances=False):
-    """Return the connectivity matrix from the Voronoi
+def get_voronoi_neighbors(atoms, cutoff=10, return_distances=False):
+    """
+    Based on connectivity from CatKit, with a fix for the distance
+    cutoff.
+    Return the connectivity matrix from the Voronoi
     method. Multi-bonding occurs through periodic boundary conditions.
 
     Parameters
@@ -246,6 +255,7 @@ def get_voronoi_neighbors(atoms, cutoff=5.0, return_distances=False):
 
 
 def get_weighted_area(vertices, d):
+    """ helper method for voronoi area"""
     center = vertices[0, :]
     vertices -= center
 
@@ -342,7 +352,7 @@ def get_fitness(atoms, use_density=True):
         # get connectivity matrix
         con_matrix, con_int = get_area_neighbors(atoms,
                                                  return_std_con=True)
-        np.place(con_int, con_int==0, 1)
+        np.place(con_int, con_int == 0, 1)
         con_matrix_norm = con_matrix / con_int
         #print(np.round(con_matrix, 2))
         metal_idx = [i for i, a in enumerate(
@@ -396,7 +406,7 @@ def get_oxidation_states(metal_symbols, n_O):
     oxi_states_dict = {}
     metal_symbols, counts = np.unique(metal_symbols, return_counts=True)
 
-    electroneg = [electronegs[m] for m in metal_symbols]
+    electroneg = [electronegs.get(m, 0) for m in metal_symbols]
     indices = np.argsort(electroneg)[::-1]
     metal_symbols = metal_symbols[indices]
 
@@ -436,7 +446,9 @@ def get_oxidation_states(metal_symbols, n_O):
 
 def get_connections(atoms, decimals=1):
 
-    connectivity = get_voronoi_neighbors(atoms, cutoff=3)
+    connectivity = get_area_neighbors(atoms)
+
+    # print(connectivity)
     atoms_connections = {}
 
     for i in range(len(atoms)):
@@ -446,7 +458,9 @@ def get_connections(atoms, decimals=1):
                 atoms_connections[symbols] = [0 for n in range(len(atoms))]
 
             if not atoms[i].symbol == atoms[j].symbol:
-                k = np.min([i, j])
+                idx = np.argsort([atoms[i].symbol, atoms[j].symbol])
+                k = [i, j][idx[-1]]
+                #k = np.min([i, j])
             else:
                 k = i
 
