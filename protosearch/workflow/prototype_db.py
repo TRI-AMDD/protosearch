@@ -9,7 +9,7 @@ from ase.db.sqlite import SQLite3Database
 from ase.io import read
 import sqlite3
 
-from protosearch.utils import get_basepath
+from protosearch.utils import get_tri_basepath
 from protosearch.utils.standards import VaspStandards
 
 init_commands = [
@@ -80,7 +80,7 @@ class PrototypeSQL:
             assert filename.endswith(
                 '.db'), 'filename should have .db extension'
         else:
-            basepath = get_basepath()
+            basepath = get_tri_basepath()
             filename = basepath + '/prototypes.db'
         self.filename = filename
         self.initialized = False
