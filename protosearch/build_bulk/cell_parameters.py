@@ -16,38 +16,33 @@ from catkit.gen.utils.connectivity import get_voronoi_neighbors, get_cutoff_neig
 
 from protosearch import build_bulk
 from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
-from .classification import PrototypeClassification
 from .fitness_function import get_covalent_density, get_fitness, get_connections
 from protosearch.ml_modelling.regression_model import get_regression_model
 from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
+from protosearch.utils.data import metal_numbers
+
 path = build_bulk.__path__[0]
 
 
 class CellParameters(WyckoffSymmetries):
     """
     Provides a fair estimate of cell parameters including lattice constants,
-    angles, and free wyckoff coordinates. Users must suply either atoms object
-    or spacegroup, wyckoff positons and species.
+    angles, and free wyckoff coordinates.
 
     Parameters:
-
     spacegroup: int
        int between 1 and 230
     wyckoffs: list
        wyckoff positions, for example ['a', 'a', 'b', 'c']
     species: list
        atomic species, for example ['Fe', 'O', 'O', 'O']
-    wyckoffs_from_oqmd: bool
-       Fetch positions from experimentally observed structure if present
-
     """
 
     def __init__(self,
                  spacegroup=None,
                  wyckoffs=None,
                  species=None,
-                 verbose=True,
-                 wyckoffs_from_oqmd=False
+                 verbose=True
                  ):
 
         super().__init__(spacegroup=spacegroup,
@@ -59,12 +54,10 @@ class CellParameters(WyckoffSymmetries):
 
         self.set_lattice_dof()
         if self.wyckoffs is not None:
-            self.p_name = self.get_prototype_name(species)
-
+            #self.p_name = self.get_prototype_name(species)
             self.parameter_guess = self.initial_guess()
 
         self.verbose = verbose
-        self.wyckoffs_from_oqmd = wyckoffs_from_oqmd
 
     def set_lattice_dof(self):
         """Set degrees of freedom for lattice constants and angles
@@ -184,25 +177,25 @@ class CellParameters(WyckoffSymmetries):
             return [cell_parameters]
 
         if optimize_wyckoffs or optimize_angles:
+            opt_cell_parameters = []
+
             if self.verbose:
-                print('Running ML for {} - {} - {}. {} atoms'
+                print('Running ML + GA for {} - {} - {}. {} atoms'
                       .format(self.spacegroup, self.wyckoffs, self.species,
                               self.natoms))
 
-            # Use simple GA to optimize parameters - returns several candidates
             atoms_list = \
-                self.run_ml_ga_optimization(master_parameters=master_parameters,
-                                            optimize_lattice=optimize_lattice,
-                                            optimize_angles=optimize_angles,
-                                            optimize_wyckoffs=optimize_wyckoffs,
-                                            max_candidates=max_candidates)
-
-            opt_cell_parameters = []
+                self.run_ml_ga_optimization(
+                    master_parameters=master_parameters,
+                    optimize_lattice=optimize_lattice,
+                    optimize_angles=optimize_angles,
+                    optimize_wyckoffs=optimize_wyckoffs,
+                    max_candidates=max_candidates)
 
             for atoms in atoms_list:
                 opt_parameters = \
-                    self.get_cell_parameters(atoms)
-
+                    self.get_cell_parameters(
+                        atoms)  # .update(master_parameters)
                 opt_cell_parameters += [opt_parameters]
 
         elif optimize_lattice:
@@ -523,13 +516,15 @@ class CellParameters(WyckoffSymmetries):
                         primitive_cell=primitive_cell,
                         onduplicates='keep',
                         symprec=1e-5)
-        if not primitive_cell:
-            if not len(relative_positions) == len(atoms):
-                return None
+        # if not primitive_cell:
+        #    #print(len(relative_positions), len(atoms))
+        #    if not len(relative_positions) == len(atoms):
+        #        return None
         return atoms
 
+    """
     def check_prototype(self, atoms):
-        """Check that spacegroup and wyckoff positions did not change"""
+        #Check that spacegroup and wyckoff positions did not change
 
         PC = PrototypeClassification(atoms)
 
@@ -545,32 +540,7 @@ class CellParameters(WyckoffSymmetries):
             return False
         else:
             return True
-
-    def get_wyckoff_coordinates_oqmd(self):
-
-        self.get_free_wyckoff_parameters()
-
-        atoms = self.construct_atoms()
-        oqmd_db = ase.db.connect(path + '/oqmd_ver3.db')
-
-        structure = list(oqmd_db.select(proto_name=self.p_name,
-                                        formula=atoms.get_chemical_formula(),
-                                        limit=1))
-        if len(structure) == 0:
-            structure = list(oqmd_db.select(proto_name=self.p_name,
-                                            limit=1))
-        if len(structure) == 0:
-            return None
-
-        oqmd_parameters = self.get_cell_parameters(
-            structure[0].toatoms(), True)
-        try:
-            for parameter in np.append(self.coor_variables, self.angle_variables):
-                self.parameter_guess.update(
-                    {parameter: oqmd_parameters[parameter]})
-        except:
-            return None
-        return self.parameter_guess
+    """
 
     def optimize_lattice_constants(self,
                                    atoms,
