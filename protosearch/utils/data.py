@@ -1,5 +1,6 @@
 metal_numbers = [3, 4, 11, 12, 13] +\
-    list(range(19, 32)) + list(range(37, 51)) + list(range(55, 85))
+    list(range(19, 34)) + list(range(37, 53)) + list(range(55, 86)) + \
+    list(range(87, 104))
 
 electronegs = {'Ti': 1.54, 'V': 1.63, 'Cr': 1.66, 'Mn': 1.55,
                'Fe': 1.83, 'Co': 1.88, 'Ni': 1.91, 'Cu': 1.90,
