@@ -77,8 +77,8 @@ class Enumeration():
                                                SG, num, self.num_type)
                               for num in range(self.num_start, self.num_end + 1)]
                 if np.all(enumerated):
-                    print('spacegroup={} already enumerated for n_{}={}:{}'\
-                          .format(SG,self.num_type,
+                    print('spacegroup={} already enumerated for n_{}={}:{}'
+                          .format(SG, self.num_type,
                                   self.num_start, self.num_end))
                     continue
             E = be.enumerator.ENUMERATOR()
@@ -151,7 +151,7 @@ class AtomsEnumeration():
                  spacegroups=None):
         self.elements = elements
         self.max_atoms = max_atoms
-        self.spacegroups = spacegroups or list(range(1,231))
+        self.spacegroups = spacegroups or list(range(1, 231))
 
         for key, value in self.elements.items():
             self.elements[key] = map_elements(value)
@@ -167,7 +167,6 @@ class AtomsEnumeration():
         Nprot = len(prototypes)
 
         pool = Pool()
-
 
         t0 = time.time()
         if multithread:
@@ -192,8 +191,16 @@ class AtomsEnumeration():
 
     def store_atoms_for_prototype(self, prototype, max_candidates=3):
 
+        p_name = prototype['name']
+        counts = []
+        for a in p_name.split('_')[0]:
+            if a.isdigit():
+                counts[-1] += int(a) - 1
+            else:
+                counts += [1]
+
         species_lists = self.get_species_lists(
-            prototype['species'], prototype['permutations'])
+            prototype['species'], prototype['permutations'], counts)
 
         cell_parameters = prototype.get('cell_parameters', None)
         if cell_parameters:
@@ -231,6 +238,7 @@ class AtomsEnumeration():
 
             for i, atoms in enumerate(atoms_list):
                 atoms.info.pop('spacegroup')
+                atoms.info.pop('spacegroup_kinds')
                 key_value_pairs.update(atoms.info)
                 key_value_pairs.update(
                     {'cell_parameters': json.dumps(parameters[i])})
@@ -244,7 +252,8 @@ class AtomsEnumeration():
                 with PrototypeSQL(filename=self.filename) as DB:
                     DB.ase_db.write(atoms, key_value_pairs)
 
-    def get_species_lists(self, gen_species, permutations):
+    def get_species_lists(self, gen_species, permutations, counts):
+
         elements = self.elements
 
         alph = list(string.ascii_uppercase)
@@ -253,7 +262,10 @@ class AtomsEnumeration():
                     'B': 'A1',
                     'C': 'A2',
                     'D': 'A3',
-                    'E': 'A4'}
+                    'E': 'A4',
+                    'F': 'A5',
+                    'G': 'A6',
+                    'G': 'A7'}
 
         N_unique = len(set(gen_species))
 
@@ -268,21 +280,36 @@ class AtomsEnumeration():
                     if not e in c:
                         c_list += [c + [e]]
 
-        """
-        permutations_list = [p.split('_') for p in permutations]
+        i = 0
+        group_species = [[0]]
+        while i < len(counts) - 1:
+            if counts[i] == counts[i + 1]:
+                group_species[-1] += [i + 1]
+            else:
+                group_species += [[i + 1]]
+            i += 1
 
-        perm0 = permutations_list[0]
-        duplicate_list = []
-        for perm in permutations_list[1:]:
-            indices = [perm.index(p) for p in perm0]            
-            for i, c in enumerate(c_list):
-                c_perm = list(np.array(c)[indices])
-                print(c, c_perm)
-                if c_perm in c_list[:i]:
-                    duplicate_list += [i]
-            
-        c_list = [c for i, c in enumerate(c_list) if i not in duplicate_list]
-        """
+        # Only include permutations between same atomic ratio
+        permutations_list = [p.split('_') for p in permutations]
+        permutations_list = [[int(p[1]) for p in p_list] for
+                             p_list in permutations_list]
+        for g in group_species:
+            if len(g) == 1:
+                i = g[0]
+                permutations_list = [p for p in permutations_list if
+                                     p[i] == i]
+            elif len(g) > 1:
+                sub_perm = np.sort(g)
+                permutations_list = [p for p in permutations_list if
+                                     np.all(np.sort(np.array(p)[g]) == sub_perm)]
+
+        extra_c_list = []
+        for c in c_list:
+            for p_list in permutations_list[1:]:
+                new = list(np.array(c)[p_list])
+                extra_c_list += [new]
+
+        c_list += extra_c_list
 
         species_list = []
 
@@ -369,7 +396,7 @@ def map_elements(key):
 
 
 def get_stoich_from_formulas(formulas):
-    alphabet = ['A', 'B', 'C', 'D', 'E']
+    alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
     stoichs = []
     elements = {}
     for formula in formulas:
