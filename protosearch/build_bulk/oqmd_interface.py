@@ -23,7 +23,7 @@ class OqmdInterface:
 
     def __init__(self, source='icsd'):
         if source == 'icsd':
-            self.dbfile = path + '/oqmd_icsd_new.db'
+            self.dbfile = path + '/oqmd_icsd.db'
         else:
             raise NotImplementedError('Only ICSD structure source impemented')
 
