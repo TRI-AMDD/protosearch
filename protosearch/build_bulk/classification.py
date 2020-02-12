@@ -1,12 +1,18 @@
 import sys
 import numpy as np
-from spglib import get_symmetry_dataset
+from spglib import get_symmetry_dataset, standardize_cell
 from ase import Atoms
 from ase.spacegroup import Spacegroup
 from ase.build import cut
 
 
 from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
+
+from protosearch import build_bulk
+path = build_bulk.__path__[0]
+
+wyckoff_data = path + '/Wyckoff.dat'
+wyckoff_pairs = path + '/Symmetric_Wyckoff_Pairs.dat'
 
 
 class PrototypeClassification(WyckoffSymmetries):
@@ -18,6 +24,7 @@ class PrototypeClassification(WyckoffSymmetries):
                                                 atoms.get_scaled_positions(),
                                                 atoms.get_atomic_numbers()),
                                                symprec=tolerance)
+
         self.tolerance = tolerance
 
         self.spacegroup = self.spglibdata['number']
@@ -30,10 +37,13 @@ class PrototypeClassification(WyckoffSymmetries):
         WyckoffSymmetries.wyckoffs = self.wyckoffs
         WyckoffSymmetries.species = self.species
 
+
     def get_conventional_atoms(self, atoms):
         """Transform from primitive to conventional cell"""
 
+
         std_cell = self.spglibdata['std_lattice']
+
         positions = self.spglibdata['std_positions']
         numbers = self.spglibdata['std_types']
 
@@ -42,6 +52,24 @@ class PrototypeClassification(WyckoffSymmetries):
                       pbc=True)
 
         atoms.set_scaled_positions(positions)
+        atoms.wrap()
+
+        return atoms
+
+    def get_primitive_atoms(self, atoms):
+        """Transform from primitive to conventional cell"""
+
+        lattice, scaled_positions, numbers = standardize_cell(atoms,
+                                                              to_primitive=True,
+                                                              no_idealize=False,
+                                                              symprec=1e-5)
+
+        atoms = Atoms(numbers=numbers,
+                      cell=lattice,
+                      pbc=True)
+
+        atoms.set_scaled_positions(scaled_positions)
+
         atoms.wrap()
 
         return atoms
@@ -94,7 +122,11 @@ class PrototypeClassification(WyckoffSymmetries):
 
         indices = np.argsort(self.species)
 
-        #print(self.species, self.wyckoffs)
+        w_sorted = []
+        # for s in set(self.species):
+        #    indices = [i for i, s0 in enumerate(self.species) if s0==s]
+        #    w_sorted += sorted([self.wyckoffs[i] for i in indices])
+        #self.wyckoffs = w_sorted
 
         free_wyckoffs = self.get_free_wyckoffs()
         self.atoms_wyckoffs = []
@@ -132,3 +164,67 @@ class PrototypeClassification(WyckoffSymmetries):
 
         else:
             return prototype
+
+
+def get_wyckoff_pair_symmetry_matrix(spacegroup):
+    letters, multiplicity = get_wyckoff_letters_and_multiplicity(spacegroup)
+
+    n_points = len(letters)
+    pair_names = []
+    for i in range(n_points):
+        for j in range(n_points):
+            pair_names.append('{}_{}'.format(letters[i], letters[j]))
+
+    M = np.zeros([n_points**2, n_points**2])
+
+    with open(wyckoff_pairs, 'r') as f:
+        sg = 1
+        for i, line in enumerate(f):
+            if len(line) == 1:
+                if sg < spacegroup:
+                    sg += 1
+                    continue
+                else:
+                    break
+            if sg < spacegroup:
+                continue
+            w_1 = line[:3]
+            if not w_1 in pair_names:
+                continue
+            k = pair_names.index(w_1)
+            pairs0 = line.split('\t')[2: -1]
+            for w_2 in pairs0:
+                j = pair_names.index(w_2)
+                M[k, j] = 1
+
+    free_letters = []
+    for l in letters:
+        i = pair_names.index(l + '_' + l)
+        if M[i, i] == 1:
+            free_letters += [l]
+
+    np.fill_diagonal(M, 1)
+
+    return pair_names, M, free_letters
+
+
+def get_wyckoff_letters_and_multiplicity(spacegroup):
+    letters = np.array([], dtype=str)
+    multiplicity = np.array([])
+    with open(wyckoff_data, 'r') as f:
+        i_sg = np.inf
+        i_w = np.inf
+        for i, line in enumerate(f):
+            if '1 {} '.format(spacegroup) in line \
+               and not i_sg < np.inf:
+                i_sg = i
+            if i > i_sg:
+                if len(line) > 15:
+                    continue
+                if len(line) == 1:
+                    break
+                multi, w, sym, sym_multi = line.split(' ')
+                letters = np.insert(letters, 0, w)
+                multiplicity = np.insert(multiplicity, 0, multi)
+
+    return letters, multiplicity
