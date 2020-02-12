@@ -2,9 +2,19 @@ import numpy as np
 import scipy
 from shapely.geometry import Polygon
 from ase.data import covalent_radii as cradii
+from pymatgen.io.ase import AseAtomsAdaptor
+from pymatgen.analysis.ewald import EwaldSummation
 
 from protosearch.utils.data import metal_numbers, prefered_O_state,\
     favored_O_connections, electronegs
+
+
+fixed_oxi_states = {'O': -2,
+                    'S': -2,
+                    'N': -3,
+                    'P': -3,
+                    'F': -1,
+                    'Cl': -1}
 
 
 def expand_cell(atoms, cutoff=None, padding=None):
@@ -317,83 +327,65 @@ def get_apf_fitness(atoms, apf_0=0.1):
     return fitness
 
 
-def get_fitness(atoms, use_density=True):
-    """
-    Structure fitness for Wyckoff coordinate optimization
+def get_fitness(atoms):
+    N_metal = len([a for a in atoms if a.number in metal_numbers])
+    symbols = atoms.get_chemical_symbols()
 
-    Only implemented for  oxides and metals.
-    Fitness is based on the prefered connectivity of atoms,
-    as discussed in D. Waroquiers et al. Chem. Mater. 2017, 29, 8346−8360
+    if N_metal == len(atoms):
+        # If metal use volume as fitness
+        fitness = - atoms.get_volume()
+    else:
+        fitness = - get_ewald_energy(atoms)
 
-    Parameters:
-    atoms: ASE atoms object
-    use_density: bool
-        whether to include structure density in the fitness function 
-        (default is False)
-    """
-
-    symbols = list(atoms.get_chemical_symbols())
-    numbers = atoms.get_atomic_numbers()
-
-    if np.all([z in metal_numbers for z in numbers]):
-        # Pure metallic
-        fitness = get_apf_fitness(atoms, apf_0=0.5)
-        return fitness
-
-    elif 'O' in symbols:
-        # Oxide
-        if use_density:
-            fitness = get_apf_fitness(atoms, apf_0=0.1)
-        else:
-            fitness = 1
-        # if fitness < -2: # don't do voronoi analysis on low volume structures
-        #    return np.max([fitness, -20])
-
-        # get connectivity matrix
-        con_matrix, con_int = get_area_neighbors(atoms,
-                                                 return_std_con=True)
-        np.place(con_int, con_int == 0, 1)
-        con_matrix_norm = con_matrix / con_int
-        #print(np.round(con_matrix, 2))
-        metal_idx = [i for i, a in enumerate(
-            atoms) if a.number in metal_numbers]
-        metal_symbols = [symbols[i] for i in metal_idx]
-        O_idx = [i for i, a in enumerate(atoms) if a.symbol == 'O']
-        n_O = len(O_idx)
-        n_M = len(metal_idx)
-
-        oxi_states = get_oxidation_states(metal_symbols, n_O)
-
-        # M-O connection should be ~ 6
-        M_O_contribution = 0
-        for i, m in enumerate(metal_symbols):
-            oxi_state = str(oxi_states[m])
-            f_O_c = favored_O_connections[m].get(oxi_state, [6])
-            n_connections = sum(con_matrix[i, O_idx])
-            closest_f_O_c = f_O_c[np.argmin(np.abs(f_O_c - n_connections))]
-            M_O_contribution +=\
-                np.abs((n_connections - closest_f_O_c) / closest_f_O_c)
-        fitness -= M_O_contribution / n_M
-
-        # M-M connection should be zero ? Omit for now
-        #fitness -= np.sum(con_matrix[metal_idx, ][:, metal_idx]) / n_M
-
-        # O-M connection should be ~ 3
-        # O-O connectivity shoud not exceed 2 (we don't want 02)
-        for i in O_idx:
-            n_connections = sum(con_matrix[i, metal_idx])
-            f_O = np.array(f_O_c) / n_O * n_M
-            closest_f_O = f_O[np.argmin(np.abs(f_O - n_connections))]
-            fitness -= np.abs(n_connections - closest_f_O) \
-                / n_O / closest_f_O
-
-            for j in np.where(con_matrix_norm[i, O_idx] > 1)[0]:
-                fitness -= (con_matrix_norm[i, O_idx][j] - 1) / n_O
-
-    return np.max([fitness, -20])
+    return fitness
 
 
-def get_oxidation_states(metal_symbols, n_O):
+def get_oxidation_states(atoms):
+
+    metal_idx = [i for i, a in enumerate(
+        atoms) if a.number in metal_numbers]
+
+    non_metal_idx = [i for i in range(len(atoms)) if not i in metal_idx]
+
+    symbols = atoms.get_chemical_symbols()
+
+    fix_oxi_nonM = np.array([fixed_oxi_states[symbols[i]]
+                             for i in non_metal_idx])
+
+    if len(fix_oxi_nonM) == 0:
+        raise NotImplementedError('Fitness for {} composition not implemented'
+                                  .format(atoms.get_chemical_formula))
+
+    oxi_states = np.array([-2] * len(atoms), dtype=float)
+    oxi_states[non_metal_idx] = fix_oxi_nonM
+    con_matrix = get_area_neighbors(atoms)
+    for mi in metal_idx:
+        M_nonM_connectivity = con_matrix[mi][non_metal_idx]
+
+        norm = np.sum(con_matrix[non_metal_idx][:, metal_idx], axis=-1)
+
+        idx = np.where(norm > 0)[0]
+
+        oxi_states[mi] = -sum(M_nonM_connectivity[idx]
+                              * fix_oxi_nonM[idx] / norm[idx])
+    return oxi_states
+
+
+def get_ewald_energy(atoms, use_density=True):
+    oxi_states = get_oxidation_states(atoms)
+
+    structure = AseAtomsAdaptor.get_structure(atoms)
+    structure.add_oxidation_state_by_site(oxi_states)
+    e = EwaldSummation(structure).total_energy
+
+    return e / len(atoms)
+
+
+def get_oxy_fitness(atoms):
+    a = 1
+
+
+def get_optimal_oxidation_states_for_composition(metal_symbols, n_O):
     """
     A_nB_mO_k with oxidation states O_A and O_B setting O_O = 2
     Solve for integers O_A and O_B
@@ -448,7 +440,6 @@ def get_connections(atoms, decimals=1):
 
     connectivity = get_area_neighbors(atoms)
 
-    # print(connectivity)
     atoms_connections = {}
 
     for i in range(len(atoms)):
@@ -460,7 +451,6 @@ def get_connections(atoms, decimals=1):
             if not atoms[i].symbol == atoms[j].symbol:
                 idx = np.argsort([atoms[i].symbol, atoms[j].symbol])
                 k = [i, j][idx[-1]]
-                #k = np.min([i, j])
             else:
                 k = i
 
