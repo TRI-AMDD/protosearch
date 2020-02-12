@@ -1,26 +1,15 @@
-import sys
-import io
-import time
-import string
 import numpy as np
 from numpy.random import rand, randint
-import ase
-from ase import Atoms, Atom
 from ase.visualize import view
-from ase.geometry import get_distances, find_mic, cell_to_cellpar, cellpar_to_cell
+from ase.geometry import get_distances, cell_to_cellpar
 from ase.data import atomic_numbers as a_n
 from ase.data import covalent_radii as cradii
-from ase.geometry.geometry import wrap_positions
-from ase.spacegroup import crystal, get_spacegroup
+from ase.spacegroup import crystal
 
-from protosearch import build_bulk
-from .wyckoff_symmetries import WyckoffSymmetries, wrap_coordinate
-from .fitness_function import get_covalent_density, get_fitness, get_connections
 from protosearch.ml_modelling.regression_model import get_regression_model
-from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
-from protosearch.utils.data import metal_numbers
-
-path = build_bulk.__path__[0]
+from protosearch.ml_modelling.fingerprint import clean_features
+from .wyckoff_symmetries import WyckoffSymmetries
+from .fitness_function import get_fitness, get_connections
 
 
 class CellParameters(WyckoffSymmetries):
@@ -267,13 +256,12 @@ class CellParameters(WyckoffSymmetries):
                                optimize_angles=True,
                                optimize_wyckoffs=True,
                                use_fitness_sharing=False,
-                               batch_size=5,
+                               batch_size=3,
                                max_candidates=1,
                                debug=False):
         """
         ML-accelerated Genetic algorithm optimization 
-        for free wyckoff coordinates
-        and lattice angles.
+        for free wyckoff coordinates and lattice angles.
         """
 
         cell_parameters = self.initial_guess()
@@ -361,7 +349,7 @@ class CellParameters(WyckoffSymmetries):
                 connections = None
                 if fit > -2:
                     # Don't do voronoi for very dilute structures
-                    connections = get_connections(atoms)
+                    connections = get_connections(atoms, decimals=1)
 
                 fitness = np.append(fitness, fit)
                 all_structures += [{'parameters': cell_parameters,
@@ -414,7 +402,8 @@ class CellParameters(WyckoffSymmetries):
                     np.array(fitness),
                     optimize_hyperparameters=True,
                     kernel_width=3,
-                    bounds=((0.5, 5),))
+                    #bounds=((0.5, 5),)
+                )
             except:
                 Model = get_regression_model('catlearn')(
                     features['train'],
@@ -426,7 +415,6 @@ class CellParameters(WyckoffSymmetries):
             predictions = result['prediction']
             unc = result['uncertainty']
             AQU = predictions + 0.5 * unc
-
             if debug:
                 import pylab as p
                 idx = np.argsort(predictions)
@@ -441,11 +429,10 @@ class CellParameters(WyckoffSymmetries):
                 converged = True
             elif not np.max(AQU) > best_fitness and iter_id > 5:
                 converged = True
-            elif best_fitness > 0.95:
-                converged = True
+            # elif best_fitness > 0.95:
+            #    converged = True
 
             batch_indices = np.argsort(AQU)[::-1][:batch_size]
-
             iter_id += 1
 
         indices = np.argsort(fitness)[::-1][:max_candidates]
@@ -574,9 +561,7 @@ class CellParameters(WyckoffSymmetries):
 
         self.hard_limit = soft_limit
         increment = 0.99
-        t0 = time.time()
 
-        t = 0
         while self.hard_limit > 1:
             cell_norm = np.linalg.norm(cell, axis=1)
             axis_length_ix = np.argsort(
@@ -613,12 +598,10 @@ class CellParameters(WyckoffSymmetries):
                                                               direction)
 
                     cell_volume = atoms.get_volume()
-                    t = time.time() - t0
                 images += [atoms.copy()]
-            t = time.time() - t0
 
         if view_images:
-            ase.visualize.view(images)
+            view(images)
 
         return images[-1]
 

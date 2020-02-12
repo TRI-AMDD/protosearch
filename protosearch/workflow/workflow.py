@@ -11,7 +11,7 @@ from ase.io import read
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.build_bulk.classification import PrototypeClassification
 
-from protosearch.utils import get_basepath
+from protosearch.utils import get_tri_basepath
 from protosearch.utils.standards import VaspStandards, CrystalStandards
 from protosearch.calculate.dummy_calc import DummyCalc
 from protosearch.calculate.submit import TriSubmit
@@ -33,8 +33,8 @@ class Workflow(PrototypeSQL):
                  verbose=False):
 
         self.verbose = verbose
-        self.basepath = get_basepath(calculator=calculator,
-                                     ext=basepath_ext)
+        self.basepath = get_tri_basepath(calculator=calculator,
+                                         ext=basepath_ext)
         if not db_filename:
             db_filename = self.basepath + '/prototypes.db'
 

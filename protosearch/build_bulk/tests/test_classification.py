@@ -96,6 +96,7 @@ class PrototypeClassificationTest(unittest.TestCase):
                           'zh2': 0.88255}
 
         for key, value in prototype_ref.items():
+            print(prototype[key], value)
             assert prototype[key] == value
 
         for key, value in parameters_ref.items():

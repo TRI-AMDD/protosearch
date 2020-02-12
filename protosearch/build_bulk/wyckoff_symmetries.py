@@ -178,11 +178,12 @@ class WyckoffSymmetries:
             if factor > 1:
                 p_name += str(factor)
 
-        p_name += '_' + str(repetition)
+        p_name += '_' + str(repetition)  # // len(self.class_coordinates))
 
         added_species = ['']
         for i, w in enumerate(self.wyckoffs):
             s = species[i]
+
             if not s == added_species[-1]:
                 p_name += '_'
                 p_name += w
@@ -306,6 +307,7 @@ class WyckoffSymmetries:
 
             c_position = wrap_coordinate(position,
                                          plane=plane)
+            #print(test_position, c_position)
             if np.all(np.isclose(test_position, c_position, rtol=tol)):
                 # print('OK')
                 if return_coor:
