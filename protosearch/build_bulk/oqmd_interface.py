@@ -19,7 +19,7 @@ path = build_bulk.__path__[0]
 
 
 class OqmdInterface:
-    """Interace to OQMD data to create structurally unique atoms objects"""
+    """Interace to OQMD entries to create structurally unique atoms objects"""
 
     def __init__(self, source='icsd'):
         if source == 'icsd':
@@ -32,9 +32,9 @@ class OqmdInterface:
                               max_atoms=None):
         """Create a dataset of unique prototype structures.
 
-        Creates a unique set of structures of uniform stoicheometry and
+        Creates a unique set of structures with the same stoicheometry and
         composition by substituting the desired elemetns into the dataset of
-        unique OQMD structures.
+        unique OQMD structure prototypes.
 
         Parameters
         ----------
@@ -68,7 +68,7 @@ class OqmdInterface:
                 chemical_formula=chemical_formula,
                 max_atoms=max_atoms)
 
-        for proto_name in distinct_protonames:
+        for count, proto_name in enumerate(distinct_protonames):
             data_list = self.get_atoms_for_prototype(chemical_formula,
                                                      proto_name)
 
@@ -87,8 +87,6 @@ class OqmdInterface:
                 entry['parameters'] = {}
 
                 structure_name = d['structure_name']
-
-                print('Writing structure:', structure_name)
 
                 # Save prototype
                 DB.write_prototype(entry=entry)
@@ -109,6 +107,10 @@ class OqmdInterface:
 
                 # Save structure
                 DB.ase_db.write(atoms, key_value_pairs)
+
+            if (count + 1) % 10 == 0:
+                print('  {}/{} completed'.format(count+1,
+                                                 len(distinct_protonames)))
 
     def get_atoms_for_prototype(self,
                                 chemical_formula,
@@ -169,7 +171,6 @@ class OqmdInterface:
                     if idx:
                         new_species[idx] = [new_symbols[i]] * len(idx)
 
-
                 graphs += [get_connections(atoms, decimals=1)]
                 # Get spacegroup and conventional atoms
                 SPG = SpglibInterface(atoms)
@@ -201,8 +202,6 @@ class OqmdInterface:
             if len(atoms_data) >= max_candidates:
                 break
 
-        #graphs = [get_connections(data['atoms'], decimals=1)
-        #          for data in atoms_data]
 
         indices = [i for i in range(len(atoms_data))
                    if not np.any(graphs[i] in graphs[:i])]
