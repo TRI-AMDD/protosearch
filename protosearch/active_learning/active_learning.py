@@ -4,14 +4,16 @@ import numpy as np
 import pandas as pd
 from ase.symbols import string2symbols
 from catlearn.active_learning import acquisition_functions
+from catlearn.fingerprint.voro import VoronoiFingerprintGenerator
 
 from protosearch.build_bulk.enumeration import (
-    Enumeration, AtomsEnumeration, get_stoich_from_formulas)
+    Enumeration, AtomsEnumeration, get_stoich_from_formulas, get_formulas)
 from protosearch.workflow.prototype_db import PrototypeSQL
 from protosearch.workflow.workflow import Workflow as WORKFLOW
-from protosearch.ml_modelling.fingerprint import FingerPrint, clean_features
+from protosearch.ml_modelling.fingerprint import clean_features
 from protosearch.ml_modelling.regression_model import get_regression_model
 from protosearch.utils.standards import CrystalStandards
+from protosearch.build_bulk.oqmd_interface import OqmdInterface
 
 
 class ActiveLearningLoop:
@@ -29,7 +31,6 @@ class ActiveLearningLoop:
                  enumeration_type='wyckoff',
                  check_frequency=300.,
                  frac_jobs_limit=0.7,
-                 stop_mode="job_fraction_limit",
                  spacegroups=None
                  ):
         """
@@ -44,9 +45,8 @@ class ActiveLearningLoop:
             ['IrO2', 'IrO3']
         source: str
             Specify how to generate the structures. Options are:
-            'oqmd_icsd': Experimental OQMD entries (not implemented)
-            'oqmd_all': All OQMD structures (not implemented)
-            'prototypes': Enumerate all prototypes.
+            'oqmd_icsd': Experimental OQMD entries only
+            'prototypes': Enumerate all prototypes
         batch_size: int
             number of DFT jobs to submit simultaneously.
         check_frequency: float
@@ -54,9 +54,6 @@ class ActiveLearningLoop:
         frac_jobs_limit: float
             Upper limit on the fraction of of jobs to be processed before
             stoping the loop
-        stop_mode: str
-            Method by which the stop criteria is defined for the ALL
-            'job_fraction_limit'
         max_atoms: int
             Max number of atoms to allow in the unit cell
         """
@@ -71,7 +68,6 @@ class ActiveLearningLoop:
         self.enumeration_type = enumeration_type
         self.check_frequency = check_frequency
         self.frac_jobs_limit = frac_jobs_limit
-        self.stop_mode = stop_mode
         self.spacegroups = spacegroups
 
         self.set_formulas_and_elements(chemical_formulas, elements)
@@ -96,7 +92,7 @@ class ActiveLearningLoop:
         for element_list in self.elements.values():
             elements += element_list
         elements = list(set(elements))
-        #self.Workflow.submit_standard_states(elements, batch_no=self.batch_no)
+
         self.Workflow.write_status(last_batch_no=self.batch_no)
 
         failed_ids = self.monitor_submissions(batch_size=0,
@@ -277,18 +273,31 @@ class ActiveLearningLoop:
         happy = False
 
         # Upper limit on Systems/Jobs processed
-        if self.stop_mode == "job_fraction_limit":
-            frac_i = self.get_frac_of_systems_processed()
-            print("Structures processed: {:.2f} %".format(frac_i))
-            if frac_i >= self.frac_jobs_limit:
-                print("Ending Loop! Upper limit of processed jobs reached")
-                happy = True
+        frac_i = self.get_frac_of_systems_processed()
+        print("Structures processed: {:.2f} %".format(frac_i))
+        if frac_i >= self.frac_jobs_limit:
+            print("Ending Loop! Upper limit of processed jobs reached")
+            happy = True
 
         return happy
 
     def enumerate_structures(self, spacegroups=None):
-        # Map chemical formula to elements
+
+        # First take experimental structures
+        OI = OqmdInterface()
+        print('Enumerating experimental prototypes')
+
+        chemical_formulas = get_formulas(self.elements, self.stoichiometries)
+
+        # for chemical_formula in chemical_formulas:
+        #    OI.store_enumeration(filename=self.db_filename,
+        #                         chemical_formula=chemical_formula,
+        #                         max_atoms=self.max_atoms)
+
+        # Enumerate prototypes as a next step
+        # experimental structures will not be overwritten.
         if self.source == 'prototypes':
+            print('Enumerating Prototypes')
             for stoichiometry in self.stoichiometries:
                 self.enumerate_prototypes(stoichiometry,
                                           spacegroups)
@@ -296,11 +305,9 @@ class ActiveLearningLoop:
             AE = AtomsEnumeration(self.elements,
                                   self.max_atoms,
                                   self.spacegroups)
-            print('ENUMERATE ATOMS')
+            print('Enumerating atoms')
             AE.store_atom_enumeration(filename=self.db_filename,
                                       multithread=False)
-        else:
-            raise NotImplementedError  # OQMD interface not implemented
 
     def enumerate_prototypes(self, stoichiometry, spacegroups=None,
                              num_type='wyckoff'):
@@ -360,23 +367,21 @@ class ActiveLearningLoop:
         if not ids:
             print('Fingerprints up do date!')
             return
-        atoms_df = pd.DataFrame(columns=['atoms'])
+
         targets_df = pd.DataFrame(columns=['id', 'Ef'])
 
         for id in ids:
             row = ase_db.get(id=id)
-            atoms_df = atoms_df.append({'atoms': row.toatoms()},
-                                       ignore_index=True)
+            atoms_list += [row.toatoms()]
             if row.get('Ef', None) is not None:
                 targets_df = targets_df.append({'id': id, 'Ef': row.Ef},
                                                ignore_index=True)
 
         targets_df = targets_df.astype({'id': int, 'Ef': float})
-        FP = FingerPrint(feature_methods=feature_methods,
-                         input_data=atoms_df,
-                         input_index=['atoms'])
 
-        fingerprints_df = FP.generate_fingerprints()['voronoi'].assign(id=ids)
+        # Catlearn Magpie interface
+        VF = VoronoiFingerprintGenerator(atoms_list)
+        fingerprints_df = VF.generate().assign(id=ids)
         fingerprints_df = fingerprints_df.astype({'id': int})
 
         self.Workflow.write_dataframe(table='fingerprint',
@@ -511,6 +516,5 @@ if __name__ == "__main__":
         max_atoms=10,
         batch_size=1,
         check_frequency=0.6,
-        frac_jobs_limit=0.4,
-        stop_mode="job_fraction_limit")
+        frac_jobs_limit=0.4)
     ALL.run()
