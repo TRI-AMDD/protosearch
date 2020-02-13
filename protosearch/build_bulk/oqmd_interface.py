@@ -24,8 +24,9 @@ class OqmdInterface:
     def __init__(self, source='icsd'):
         if source == 'icsd':
             self.dbfile = path + '/oqmd_icsd.db'
-        else:
-            raise NotImplementedError('Only ICSD structure source impemented')
+        elif source == 'oqmd':
+            self.dbfile = path + '/oqmd_ver3.db'
+
 
     def create_proto_data_set(self,
                               chemical_formula,
