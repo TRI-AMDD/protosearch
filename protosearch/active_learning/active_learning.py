@@ -21,17 +21,17 @@ class ActiveLearningLoop:
     def __init__(self,
                  chemical_formulas,
                  elements=None,
-                 Workflow=WORKFLOW,
-                 source='prototypes',
+                 structure_source=['prototypes', 'icsd'],
                  batch_size=10,
                  min_atoms=None,
                  max_atoms=None,
                  min_wyckoff=None,
                  max_wyckoff=None,
                  enumeration_type='wyckoff',
-                 check_frequency=300.,
+                 check_frequency=300,
                  frac_jobs_limit=0.7,
-                 spacegroups=None
+                 spacegroups=None,
+                 workflow=WORKFLOW
                  ):
         """
         Module to run active learning loop
@@ -43,9 +43,9 @@ class ActiveLearningLoop:
         chemical_formulas: list of strings
             chemical formulas to investigate, such as:
             ['IrO2', 'IrO3']
-        source: str
-            Specify how to generate the structures. Options are:
-            'oqmd_icsd': Experimental OQMD entries only
+        structure_source: list
+            Specify how to generate the structures. Posible list entries are:
+            'icsd': Experimental OQMD entries only
             'prototypes': Enumerate all prototypes
         batch_size: int
             number of DFT jobs to submit simultaneously.
@@ -59,7 +59,7 @@ class ActiveLearningLoop:
         """
         if isinstance(chemical_formulas, str):
             chemical_formulas = [chemical_formulas]
-        self.source = source
+        self.source = structure_source
         self.batch_size = batch_size
         self.min_atoms = min_atoms
         self.max_atoms = max_atoms
@@ -73,7 +73,7 @@ class ActiveLearningLoop:
         self.set_formulas_and_elements(chemical_formulas, elements)
 
         self.db_filename = '_'.join(chemical_formulas) + '.db'
-        self.Workflow = Workflow(db_filename=self.db_filename)
+        self.Workflow = workflow(db_filename=self.db_filename)
 
         self.Workflow.write_status(
             chemical_formulas=chemical_formulas, batch_size=batch_size)
@@ -169,7 +169,6 @@ class ActiveLearningLoop:
 
         WF = self.Workflow
         self.status = self.Workflow.get_status()
-
         if not self.status['initialized']:
             self._initialize()
             self.batch_no += 1
@@ -196,7 +195,6 @@ class ActiveLearningLoop:
                                           np.zeros_like(self.targets))
             self.Workflow.write_predictions(
                 self.batch_no, all_ids, all_energies, all_uncertainties)
-
             self.acquire_batch()
 
             self.batch_no += 1
@@ -283,20 +281,22 @@ class ActiveLearningLoop:
 
     def enumerate_structures(self, spacegroups=None):
 
-        # First take experimental structures
-        OI = OqmdInterface()
-        print('Enumerating experimental prototypes')
+        if 'icsd' in self.source:
+            # First take experimental structures
+            OI = OqmdInterface()
+            print('Enumerating experimental prototypes')
 
-        chemical_formulas = get_formulas(self.elements, self.stoichiometries)
+            chemical_formulas = get_formulas(
+                self.elements, self.stoichiometries)
 
-        # for chemical_formula in chemical_formulas:
-        #    OI.store_enumeration(filename=self.db_filename,
-        #                         chemical_formula=chemical_formula,
-        #                         max_atoms=self.max_atoms)
+            for chemical_formula in chemical_formulas:
+                OI.store_enumeration(filename=self.db_filename,
+                                     chemical_formula=chemical_formula,
+                                     max_atoms=self.max_atoms)
 
         # Enumerate prototypes as a next step
         # experimental structures will not be overwritten.
-        if self.source == 'prototypes':
+        if 'prototypes' in self.source:
             print('Enumerating Prototypes')
             for stoichiometry in self.stoichiometries:
                 self.enumerate_prototypes(stoichiometry,
