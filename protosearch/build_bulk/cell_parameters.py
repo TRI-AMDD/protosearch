@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.random import rand, randint
+from numpy.random import rand, randint, shuffle
 from ase.visualize import view
 from ase.geometry import get_distances, cell_to_cellpar
 from ase.data import atomic_numbers as a_n
@@ -228,6 +228,7 @@ class CellParameters(WyckoffSymmetries):
 
                     children += [child]
         n = n_children or len(population)
+        shuffle(children)
         return children[:n]
 
     def mutation(self, population, n_per_pop=10, n_children=None):
@@ -248,6 +249,7 @@ class CellParameters(WyckoffSymmetries):
                     mutant.update({p: value})
                 mutated += [mutant]
             n = n_children or len(population)
+        shuffle(mutated)
         return mutated[:n]
 
     def run_ml_ga_optimization(self,
@@ -256,7 +258,7 @@ class CellParameters(WyckoffSymmetries):
                                optimize_angles=True,
                                optimize_wyckoffs=True,
                                use_fitness_sharing=False,
-                               batch_size=3,
+                               batch_size=6,
                                max_candidates=1,
                                debug=False):
         """
@@ -333,7 +335,7 @@ class CellParameters(WyckoffSymmetries):
                                                         proximity=0.9,
                                                         optimize_wyckoffs=False)
                 if atoms is None:
-                    bad_indices +=[i]
+                    bad_indices += [i]
                     continue
                 parameters = cell_to_cellpar(atoms.get_cell())
 
@@ -351,7 +353,6 @@ class CellParameters(WyckoffSymmetries):
                 fit = get_fitness(atoms)
                 connections = None
                 if fit > -2:
-                    # Don't do voronoi for very dilute structures
                     connections = get_connections(atoms, decimals=1)
 
                 fitness = np.append(fitness, fit)
@@ -362,7 +363,7 @@ class CellParameters(WyckoffSymmetries):
 
             best_fitness = np.max(fitness)
             print('iter {} best_fitnes:'.format(iter_id),  np.max(fitness))
-            batch_indices = [idx for idx in batch_indices if not idx 
+            batch_indices = [idx for idx in batch_indices if not idx
                              in bad_indices]
             if train_features is None:
                 train_features = test_features[batch_indices]
@@ -378,8 +379,8 @@ class CellParameters(WyckoffSymmetries):
 
             indices = np.argsort(fitness)[::-1]
             ga_survived = np.array(train_population)[indices][:10]
-            new_population = self.crossover(ga_survived) + \
-                self.mutation(ga_survived)
+            new_population = self.crossover(ga_survived, n_children=50) + \
+                self.mutation(ga_survived, n_children=10)
 
             for pop in new_population:
                 val = []
@@ -406,10 +407,11 @@ class CellParameters(WyckoffSymmetries):
                     features['train'],
                     np.array(fitness),
                     optimize_hyperparameters=True,
-                    kernel_width=3,
+                    kernel_width=1,
                     #bounds=((0.5, 5),)
                 )
             except:
+                print('Fixed params')
                 Model = get_regression_model('catlearn')(
                     features['train'],
                     np.array(fitness),
@@ -419,7 +421,24 @@ class CellParameters(WyckoffSymmetries):
             result = Model.predict(features['test'])
             predictions = result['prediction']
             unc = result['uncertainty']
-            AQU = predictions + 0.5 * unc
+
+            # Acquisition function mix two acquisition functions
+            AQU1 = predictions + 0.1 * unc
+            AQU2 = predictions + 0.5 * unc
+
+            indices1 = np.argsort(AQU1)[::-1][:batch_size]
+            indices2 = np.argsort(AQU2)[::-1][:batch_size]
+
+            indices2 = np.array([int(aqu_i)
+                                 for aqu_i in indices2 if not aqu_i in indices1])
+
+            bs1 = batch_size // 2
+            bs2 = batch_size - bs1
+            batch_indices = np.array(
+                np.append(indices1[:bs1], indices2[:bs2]), dtype=int)
+
+            iter_id += 1
+
             if debug:
                 import pylab as p
                 idx = np.argsort(predictions)
@@ -432,25 +451,23 @@ class CellParameters(WyckoffSymmetries):
 
             if iter_id > 30 or len(predictions) < 7:
                 converged = True
-            elif not np.max(AQU) > best_fitness and iter_id > 5:
+            elif not np.max(AQU1) > best_fitness and iter_id > 5:
                 converged = True
             # elif best_fitness > 0.95:
             #    converged = True
-
-            batch_indices = np.argsort(AQU)[::-1][:batch_size]
-            iter_id += 1
 
         indices = np.argsort(fitness)[::-1][:max_candidates]
         fitness = fitness[indices]
 
         all_structures = np.array(all_structures)[indices]
         all_graphs = np.array([s['graph'] for s in all_structures])
+        f_max = max(fitness)
 
         if fitness[0] < 0.8:
             indices = [0]
         else:
             indices = [i for i, f in enumerate(fitness) if
-                       f > 0.8 and not
+                       f > 0.8 * f_max and not
                        np.any(all_graphs[i] in all_graphs[:i])
                        ]
 
