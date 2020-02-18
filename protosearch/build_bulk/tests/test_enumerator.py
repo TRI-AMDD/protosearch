@@ -7,7 +7,8 @@ import numpy as np
 from ase.io import read
 
 from protosearch.build_bulk.enumeration import Enumeration
-from protosearch.build_bulk.classification import get_classification
+from protosearch.build_bulk.enumeration import AtomsEnumeration
+from protosearch.build_bulk.be_classification import get_classification
 
 
 class EnumerationTest(unittest.TestCase):
@@ -20,21 +21,26 @@ class EnumerationTest(unittest.TestCase):
         os.chdir(self.pwd)
         shutil.rmtree(self.tempdir)
 
-    def test_enumeration(self):
-        enumeration = Enumeration("Fe2O3", num_start=1, num_end=20)
+    def test1_enumeration(self):
+        E = Enumeration("1_2", num_start=1, num_end=5, SG_start=20, SG_end=22)
+        E.store_enumeration('1_2.db')
+        E = AtomsEnumeration(elements={'A': ['Fe'],
+                                       'B': ['O']},
+                             spacegroups=[21])
+        E.store_atom_enumeration('1_2.db')
 
-    def test_classification(self):
+    def test2_classification(self):
         path = sys.path[0]
         atoms = read(path + '/Se_mp-570481_conventional_standard.cif')
-        result, param = get_classification(atoms)
-        assert result == {'p_name': 'A_64_e16_14',
-                          'spacegroup': 14,
-                          'wyckoffs': ['e', 'e', 'e', 'e', 'e', 'e',
-                                       'e', 'e', 'e', 'e', 'e', 'e',
-                                       'e', 'e', 'e', 'e'],
-                          'species': ['Se', 'Se', 'Se', 'Se', 'Se',
-                                      'Se', 'Se', 'Se', 'Se', 'Se',
-                                      'Se', 'Se', 'Se', 'Se', 'Se', 'Se']}
+        result = get_classification(atoms)
+        assert result['p_name'] == 'A_64_e16_14'
+        assert result['spacegroup'] == 14
+        assert result['wyckoffs'] == ['e', 'e', 'e', 'e', 'e', 'e',
+                                      'e', 'e', 'e', 'e', 'e', 'e',
+                                      'e', 'e', 'e', 'e']
+        assert result['species'] == ['Se', 'Se', 'Se', 'Se', 'Se',
+                                     'Se', 'Se', 'Se', 'Se', 'Se',
+                                     'Se', 'Se', 'Se', 'Se', 'Se', 'Se']
 
         param_ref = {'a': 15.739181,
                      'b': 0.9726696706772735,
@@ -90,7 +96,7 @@ class EnumerationTest(unittest.TestCase):
                      'ze15': 0.241639}
 
         for key, value in param_ref.items():
-            assert np.isclose(value, param[key], rtol=1e-4)
+            assert np.isclose(value, result['parameters'][key], rtol=1e-4)
 
 
 if __name__ == '__main__':

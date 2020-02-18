@@ -1,73 +1,76 @@
 import sys
-import shutil
-import os
-import numpy as np
-import tempfile
 import unittest
 import ase
-from ase.db import connect
 
 from protosearch.build_bulk.oqmd_interface import OqmdInterface
-from protosearch.build_bulk.classification import get_classification
-from protosearch.build_bulk.cell_parameters import CellParameters
 
 
-class BuildBulkTest(unittest.TestCase):
-    def setUp(self):
-        self.pwd = os.getcwd()
-        self.tempdir = tempfile.mkdtemp()
-        os.chdir(self.tempdir)
-
-    def tearDown(self):
-        os.chdir(self.pwd)
-        shutil.rmtree(self.tempdir)
-
+class OqmdTest(unittest.TestCase):
     def test_unique_prototypes(self):
-        path = sys.path[0]
-        O = OqmdInterface(dbfile=path + '/oqmd_ver3.db')
-        p = O.get_distinct_prototypes(source='icsd',
-                                      formula='ABC2',
-                                      repetition=2)
+        O = OqmdInterface()
+        p = O.get_distinct_prototypes(chemical_formula='NiCuCN',
+                                      max_atoms=8)
 
-        print(p)
+        assert(len(p) == 19)
         print('{} distinct prototypes found'.format(len(p)))
 
     def test_create_proto_dataset(self):
-        path = sys.path[0]
-        O = OqmdInterface(dbfile=path + '/oqmd_ver3.db')
-        atoms_list = O.create_proto_data_set(source='icsd',
-                                             chemical_formula='FeO6',
-                                             repetition=1)
-        # This test currently fails. There is 6 Fe instead of 6 O.
-        # Need to fix atom substitution part.
+        O = OqmdInterface()
+        atoms_list = O.create_proto_data_set(chemical_formula='FeO6',
+                                             max_atoms=7)
+
+        assert len(atoms_list) == 5
+
         for atoms in atoms_list["atoms"][:5]:
             assert atoms.get_number_of_atoms() == 7
             assert atoms.get_chemical_symbols().count('Fe') == 1
             assert atoms.get_chemical_symbols().count('O') == 6
-            ase.visualize.view(atoms)
 
-    def test_lattice_parameters(self, id=63872):
-        path = sys.path[0]
-        db = connect(path + '/oqmd_ver3.db')
-        atoms = db.get(id=id).toatoms()
-        prototype, parameters = get_classification(atoms)
+    def test_get_same_formula(self):
+        # Should get same formula if exists
+        O = OqmdInterface()
 
-        for p in ['a', 'b', 'c']:
-            if p in parameters:
-                del parameters[p]
+        atoms_data = O.get_atoms_for_prototype(chemical_formula='TiO2',
+                                               proto_name='AB2_2_a_f_136',
+                                               max_candidates=1)[0]
+        assert atoms_data['chemical_formula'] == atoms_data['original_formula']
 
-        CP = CellParameters(prototype['spacegroup'],
-                            prototype['wyckoffs'],
-                            prototype['species'])
+    def test_unique(self):
+        # AB == BA  - one structure
+        O = OqmdInterface()
+        atoms_data = O.get_atoms_for_prototype(chemical_formula='TiMo',
+                                               proto_name='AB_4_ab_ab_186',
+                                               max_candidates=1)
+        atoms = [a['atoms'] for a in atoms_data]
 
-        parameters = CP.get_parameter_estimate(
-            master_parameters=parameters)
-        atoms = CP.get_atoms(fix_parameters=parameters)
-        assert np.isclose(atoms.get_volume(), 1594.64, rtol=1e-4)
+        assert len(atoms) == 1
 
-        atoms = CP.get_atoms(fix_parameters=parameters,
-                             primitive=True)
-        assert np.isclose(atoms.get_volume(), 797.32, rtol=1e-4)
+        # ABC3 != BAC3  - two structures
+        atoms_data = O.get_atoms_for_prototype(chemical_formula='TiMoO3',
+                                               proto_name='ABC3_1_a_a_b_160',
+                                               max_candidates=1)
+        atoms = [a['atoms'] for a in atoms_data]
+
+        assert len(atoms) == 2
+
+    def test_substitute_atoms(self):
+        O = OqmdInterface()
+
+        atoms_data = O.get_atoms_for_prototype(chemical_formula='TiMoO2',
+                                               proto_name='ABC2_2_a_c_f_194',
+                                               max_candidates=1)[0]
+        atoms = atoms_data['atoms']
+
+        atoms_list = O.substitute_atoms(
+            atoms, new_symbols=['Nb', 'V', 'O', 'O'])
+
+        assert len(atoms_list) == 2
+
+    def test_store_enumeration(self):
+        O = OqmdInterface()
+        O.store_enumeration(filename='test.db',
+                            chemical_formula='FeO6',
+                            max_atoms=7)
 
 
 if __name__ == '__main__':

@@ -4,48 +4,54 @@ class CellStandards():
 
 
 class VaspStandards():
-    # Parameters to that will be tracked in parameterized model
+
+    """
+    Calculational settings for bulk calculations in VASP.
+    Energy cutoff, smearing and kpoints are matched to Material Project
+    standard settings at:
+    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/
+    io/vasp/MPRelaxSet.yaml
+    """
     sorted_calc_parameters = ['xc', 'encut', 'nbands', 'ispin', 'kspacing',
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
-                              'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave']
+                              'nsw', 'nelm', 'ediff', 'ediffg', 'prec',
+                              'algo', 'lwave', 'lorbit']
 
-    u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj']
+    u_parameters = ['ldau', 'lmaxmix', 'ldautype', 'ldau_luj', 'ldauprint']
 
-    """Parameters are heavily inspired by MP standard settings at
-    https://github.com/materialsproject/pymatgen/blob/master/pymatgen/io/vasp/MPRelaxSet.yaml
-    """
-
-    # is kspacing = 0.25 compatible with materials project reciprocal_density = 64?
-    # (1 / 64) ** (1/3) = 0.25  ?
+    """ Assume that kspacing = 0.25 compatible with materials project
+    reciprocal_density = 64. (1 / 64) ** (1/3) = 0.25 """
     calc_parameters = {'xc': 'pbe',
                        'encut': 520,  # energy cutoff for plane waves
                        'nbands': -5,  # number of bands / empty bands
                        'ispin': 2,  # number of spins
-                       'kspacing': 25,  # kspacing in units of 0.01
+                       'kspacing': 0.25,  # kspacing
                        'kgamma': True,  # include gamma point
                        'ismear': -5,  # smearing function
-                       'sigma': 5,  # k-point smearing in units of 0.01
+                       'sigma': 0.05,  # Low value for k-point smearing
                        'ibrion': 2,  # ion dynamics
-                       'isif': 3,  # degrees of freedom to relax
+                       'isif': 3,  # allow all degrees of freedom to relax
                        'nsw': 99,  # maximum number of ionic steps
                        'nelm': 100,  # maximum number of electronic steps
-                       'ediff': 10,  # sc accuracy in units of 1e-6
+                       # sc accuracy (MP has DIFF_PER_ATOM: 5.0e-05)
+                       'ediff': 1e-6,
+                       'ediffg': -0.02,  # force convergence accuracy
                        'prec': 'Accurate',  # Precision
                        'algo': 'Fast',  # optimization algorithm
-                       'lwave': False,  # save wavefunctions or not
+                       'lwave': False,  # Dont save wavefunctions
+                       'lreal': False,  # Dont use real space grids
+                       'lorbit': 11,  # Needed to write the magnetization
+                       'laechg': True,  # Needed to write the density
                        'ldau': True,  # USE U
-                       'lmaxmix': 4,
+                       'lmaxmix': 6,
                        'ldautype': 2,
                        'ldau_luj': {},
+                       'ldauprint': 1,
                        }
 
-    # parameters are submitted as an integer,
-    # that will be multiplied by the standard below
-    calc_decimal_parameters = {'kspacing': 0.01,
-                               'sigma': 0.01,
-                               'ediff': 1e-6,
-                               # 'ediffg': -0.001,
-                               }
+    molecule_calc_parameters = {'kspacing': None,
+                                'ismear': 0,
+                                'sigma': 0.001}
 
     paw_potentials = {'Li': '_sv',
                       'Na': '_pv',
@@ -86,7 +92,7 @@ class VaspStandards():
                       'Lu': '_3',
                       'Hf': '_pv',
                       'Ta': '_pv',
-                      'W': '_pv',
+                      'W': '_sv',
                       'Tl': '_d',
                       'Pb': '_d',
                       'Bi': '_d',
@@ -102,6 +108,11 @@ class EspressoStandards():
                               'kgamma', 'ismear', 'sigma', 'ibrion', 'isif',
                               'nsw', 'nelm', 'ediff', 'prec', 'algo', 'lwave',
                               'ldau', 'ldautype']
+
+
+class GPAWStandards():
+    "TODO"
+    sorted_calc_parameters = []
 
 
 class CommonCalc():
@@ -125,7 +136,8 @@ class CommonCalc():
              'Ta': {'L': 2, 'U': 4.00, 'J': 0.0},
              'Ti': {'L': 2, 'U': 3.00, 'J': 0.0},
              'V':  {'L': 2, 'U': 3.25, 'J': 0.0},
-             'W':  {'L': 2, 'U': 6.2, 'J': 0.0},  # 'U': 2.0
+             # MP U is very high. Others have used 3.0
+             'W':  {'L': 2, 'U': 6.2, 'J': 0.0},
              'Zr': {'L': 2, 'U': 4.00, 'J': 0.0},
              'Ce': {'L': 3, 'U': 4.50, 'J': 0.0}}
 
@@ -133,6 +145,7 @@ class CommonCalc():
     for U in U_trickers:
         U_metals.remove(U)
 
+    # Set high initial moments like Materials Project
     initial_magmoms = {'Ce': 5,
                        'Co': 5,
                        'Cr': 5,
@@ -161,6 +174,25 @@ class CrystalStandards():
                'spacegroup': 229,
                'wyckoffs': ['a'],
                'species': ['Li']},
+        'B': {'p_name': 'A_12_h2_166',
+              'spacegroup': 166,
+              'species': ['B', 'B'],
+              'wyckoffs': ['h', 'h'],
+              'parameters': {'a': 4.899977315543144,
+                             'c': 2.561437368329688,
+                             'xh0': 0.4697760000000001,
+                             'xh1': 0.4520915000000001,
+                             'zh0': 0.309094,
+                             'zh1': 0.558217}},
+        'C': {'p_name': 'A_4_n_67',
+              'parameters': {'a': 4.274524,
+                             'b': 0.5772252068300471,
+                             'c': 1.8781805880607991,
+                             'xn0': 0.833421,
+                             'zn0': 0.239942},
+              'spacegroup': 67,
+              'species': ['C'],
+              'wyckoffs': ['n']},
         'Be': {'p_name': 'A_2_c_194',
                'spacegroup': 194,
                'wyckoffs':  ['c'],
@@ -182,6 +214,79 @@ class CrystalStandards():
                'spacegroup': 225,
                'wyckoffs': ['a'],
                'species': ['Al']},
+        'P': {'p_name': 'A_42_i21_2',
+              'parameters': {'a': 7.85748,
+                             'alpha': 102.66942804526694,
+                             'b': 1.545925181580378,
+                             'beta': 106.71627094942292,
+                             'c': 1.660673102847688,
+                             'gamma': 101.97555175777389,
+                             'xi0': 0.02345500000000009,
+                             'xi1': 0.032943000000000076,
+                             'xi10': 0.26081999999999994,
+                             'xi11': 0.27566500000000005,
+                             'xi12': 0.276797,
+                             'xi13': 0.332918,
+                             'xi14': 0.38568,
+                             'xi15': 0.414176,
+                             'xi16': 0.448101,
+                             'xi17': 0.47558399999999995,
+                             'xi18': 0.48316,
+                             'xi19': 0.48444099999999995,
+                             'xi2': 0.055936000000000013,
+                             'xi20': 0.48625599999999997,
+                             'xi3': 0.10721600000000003,
+                             'xi4': 0.11043500000000003,
+                             'xi5': 0.14861900000000003,
+                             'xi6': 0.19380900000000006,
+                             'xi7': 0.220332,
+                             'xi8': 0.229521,
+                             'xi9': 0.23596800000000007,
+                             'yi0': 0.41404099999999994,
+                             'yi1': 0.5187029999999999,
+                             'yi10': 0.8482979999999998,
+                             'yi11': 0.6664039999999999,
+                             'yi12': 0.7666849999999997,
+                             'yi13': 0.22176299999999996,
+                             'yi14': 0.6645619999999999,
+                             'yi15': 0.08107100000000002,
+                             'yi16': 0.5196339999999999,
+                             'yi17': 0.3914249999999999,
+                             'yi18': 0.019708000000000035,
+                             'yi19': 0.5448409999999999,
+                             'yi2': 0.9511799999999998,
+                             'yi20': 0.075914,
+                             'yi3': 0.8243919999999998,
+                             'yi4': -0.005952000000000179,
+                             'yi5': 0.42052799999999996,
+                             'yi6': 0.266959,
+                             'yi7': 0.7281909999999999,
+                             'yi8': 0.12748999999999996,
+                             'yi9': 0.320337,
+                             'zi0': 0.8476719999999999,
+                             'zi1': 0.7284039999999999,
+                             'zi10': 0.17348699999999997,
+                             'zi11': 0.8489649999999999,
+                             'zi12': 0.7276329999999999,
+                             'zi13': 0.3596289999999999,
+                             'zi14': 0.6031289999999999,
+                             'zi15': 0.42785299999999993,
+                             'zi16': 0.6687049999999999,
+                             'zi17': 0.15018399999999998,
+                             'zi18': 0.7022179999999999,
+                             'zi19': 0.08088699999999999,
+                             'zi2': 0.17941799999999997,
+                             'zi20': 0.17109899999999997,
+                             'zi3': 0.39957699999999996,
+                             'zi4': 0.36389799999999994,
+                             'zi5': 0.6075249999999999,
+                             'zi6': 0.6662909999999999,
+                             'zi7': 0.27450699999999995,
+                             'zi8': 0.17614099999999996,
+                             'zi9': 0.8475539999999999},
+              'spacegroup': 2,
+              'species': ['P'] * 21,
+              'wyckoffs': ['i'] * 21},
         'K':  {'p_name': 'A_20_cd_213',
                'spacegroup': 213,
                'wyckoffs': ['c', 'd'],
@@ -211,6 +316,10 @@ class CrystalStandards():
                'spacegroup': 194,
                'wyckoffs':  ['c'],
                'species': ['Sc']},
+        'Y': {'p_name': 'A_2_c_194',
+              'spacegroup': 194,
+              'wyckoffs':  ['c'],
+              'species': ['Y']},
         'V': {'p_name': 'A_2_c_194',
               'spacegroup': 194,
               'wyckoffs':  ['c'],

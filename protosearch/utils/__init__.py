@@ -5,7 +5,7 @@ import os
 from protosearch import __version__ as version
 
 
-def get_basepath(calculator='vasp',
+def get_tri_basepath(calculator='vasp',
                  tri_path=None,
                  username=None,
                  ext=None):
