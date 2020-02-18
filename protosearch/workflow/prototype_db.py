@@ -22,7 +22,8 @@ init_commands = [
     permutations text,
     parameters text,
     species text,
-    wyckoffs text);""",
+    wyckoffs text,
+    source text);""",
 
     """CREATE TABLE prediction (
     batch_no,
@@ -88,9 +89,10 @@ class PrototypeSQL:
         self.connection = None
         self.stdin = stdin
         self.stdout = stdout
+        self.ase_db = ase.db.connect(self.filename)
 
     def _connect(self):
-        self.ase_db = ase.db.connect(self.filename)
+        #self.ase_db = ase.db.connect(self.filename)
         return sqlite3.connect(self.filename, timeout=600)
 
     def __enter__(self):
@@ -205,7 +207,8 @@ class PrototypeSQL:
                   json.dumps(permutations),
                   json.dumps(entry['parameters']),
                   json.dumps(entry['species']),
-                  json.dumps(entry['wyckoffs'])
+                  json.dumps(entry['wyckoffs']),
+                  entry['source']
                   )
 
         q = self.default + ',' + ', '.join('?' * len(values))
@@ -311,14 +314,16 @@ class PrototypeSQL:
         for key, value in kwargs.items():
             if value is None:
                 continue
+            if len(query) > 0:
+                query += ' and'
             if key == 'max_atoms':
                 query += "natom<={}".format(value)
             elif key == 'spacegroups':
-                if len(query) > 0:
-                    query += ' and'
                 value = [str(v) for v in value]
                 sg_str = '(' + ','.join(value) + ')'
                 query += " spacegroup in {}".format(sg_str)
+            elif isinstance(value, str):
+                query += " {}='{}'".format(key, value)
             else:
                 query += ' {}={}'.format(key, value)
         statement = 'SELECT * from prototype'

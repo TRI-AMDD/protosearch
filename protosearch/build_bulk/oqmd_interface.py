@@ -86,6 +86,7 @@ class OqmdInterface:
                 entry['spaceGroupNumber'] = entry.pop('spacegroup')
                 entry['name'] = entry.pop('p_name')
                 entry['parameters'] = {}
+                entry['source'] = 'icsd'
 
                 structure_name = d['structure_name']
 

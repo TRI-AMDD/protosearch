@@ -98,6 +98,7 @@ class Enumeration():
 
             with PrototypeSQL(filename=filename) as DB:
                 for entry in enumerations:
+                    entry.update({'source': 'prototype'})
                     DB.write_prototype(entry=entry)
 
                 for num in range(self.num_start, self.num_end + 1):
@@ -163,7 +164,8 @@ class AtomsEnumeration():
         N0 = DB.ase_db.count()
 
         prototypes = DB.select(max_atoms=self.max_atoms,
-                               spacegroups=self.spacegroups)
+                               spacegroups=self.spacegroups,
+                               source='prototype')
         Nprot = len(prototypes)
 
         pool = Pool()
@@ -238,7 +240,8 @@ class AtomsEnumeration():
 
             for i, atoms in enumerate(atoms_list):
                 atoms.info.pop('spacegroup')
-                atoms.info.pop('spacegroup_kinds')
+                if 'spacegroup_kinds' in atoms.info:
+                    atoms.info.pop('spacegroup_kinds')
                 key_value_pairs.update(atoms.info)
                 key_value_pairs.update(
                     {'cell_parameters': json.dumps(parameters[i])})
