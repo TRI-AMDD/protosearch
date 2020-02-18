@@ -21,18 +21,18 @@ class WorkflowTest(unittest.TestCase):
         shutil.rmtree(self.tempdir)
 
     def test_workflow_submit(self):
-        WF = Workflow()
+        WF = Workflow(db_filename='test.db')
         prototype = {'spacegroup': 221,
                      'wyckoffs': ['a', 'd'],
                      'species': ['Ru', 'O']}
         WF.submit(prototype)
 
     def test_standard_states(self, elements=['K', 'Al']):
-        SS = StandardStates()
-        SS.submit_standard_states(elements=elements)
+        WF = Workflow(db_filename='test.db')
+        WF.submit_standard_states(elements=elements)
 
     def test_job_status(self):
-        WF = Workflow()
+        WF = Workflow(db_filename='test.db')
         WF.check_submissions()
 
 

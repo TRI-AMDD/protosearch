@@ -11,10 +11,9 @@ from ase.io import read
 from protosearch.build_bulk.build_bulk import BuildBulk
 from protosearch.build_bulk.classification import PrototypeClassification
 
-from protosearch.utils import get_tri_basepath
 from protosearch.utils.standards import VaspStandards, CrystalStandards
 from protosearch.calculate.dummy_calc import DummyCalc
-from protosearch.calculate.submit import TriSubmit
+from protosearch.calculate.submit import get_submitter
 from .prototype_db import PrototypeSQL
 
 standard_lattice = CrystalStandards.standard_lattice_mp
@@ -22,24 +21,27 @@ all_elements = list(standard_lattice.keys()) + ['H', 'N', 'O']
 
 
 class Workflow(PrototypeSQL):
-    """Submits calculations with TriSubmit, and tracks the calculations
+    """Submits calculations on specified cluster, and tracks the calculations
     in an ASE db.
-    """
+    Parameters:
 
+    db_filename: str
+       full path to db file to save calculations
+    cluster: str
+       Currently only 'tri' is working
+    """
     def __init__(self,
+                 db_filename,
                  calculator='vasp',
-                 db_filename=None,
-                 basepath_ext=None,
+                 cluster='tri',
                  verbose=False):
 
         self.verbose = verbose
-        self.basepath = get_tri_basepath(calculator=calculator,
-                                         ext=basepath_ext)
-        if not db_filename:
-            db_filename = self.basepath + '/prototypes.db'
 
         super().__init__(filename=db_filename)
-        #self._connect()
+
+        self.Submitter = get_submitter(cluster)
+
         self.collected = False
 
     def _collect(self):
@@ -72,10 +74,9 @@ class Workflow(PrototypeSQL):
                               p_name=prototype['p_name']):
             return
 
-        Sub = TriSubmit(atoms=atoms,
-                        ncpus=ncpus,
-                        calc_parameters=calc_parameters,
-                        basepath=self.basepath)
+        Sub = self.Submitter(atoms=atoms,
+                             ncpus=ncpus,
+                             calc_parameters=calc_parameters)
 
         Sub.submit_calculation()
 
@@ -114,13 +115,12 @@ class Workflow(PrototypeSQL):
                        )
 
         atoms = BB.get_atoms(cell_parameters=cell_parameters)
-        p_name = BB.p_name
+        p_name = BB.get_prototype_name(prototype['species'])
         formula = atoms.get_chemical_formula()
 
-        Sub = TriSubmit(atoms=atoms,
-                        ncpus=ncpus,
-                        calc_parameters=calc_parameters,
-                        basepath=self.basepath)
+        Sub = self.Submitter(atoms=atoms,
+                             ncpus=ncpus,
+                             calc_parameters=calc_parameters)
 
         Sub.submit_calculation()
 
@@ -178,10 +178,9 @@ class Workflow(PrototypeSQL):
                               p_name=p_name):
             return
 
-        Sub = TriSubmit(atoms=atoms,
-                        ncpus=ncpus,
-                        calc_parameters=calc_parameters,
-                        basepath=self.basepath)
+        Sub = self.Submitter(atoms=atoms,
+                             ncpus=ncpus,
+                             calc_parameters=calc_parameters)
         Sub.submit_calculation()
 
         key_value_pairs = {'path': Sub.excpath,
@@ -410,19 +409,6 @@ class Workflow(PrototypeSQL):
             else:
                 prototype = standard_lattice[e]
                 self.submit(prototype, batch_no=batch_no, standard_state=1)
-
-
-class AWSWorkflow(Workflow):
-    """
-    """
-
-    def __init__(self,
-                 *args, **kwargs,
-                 ):
-
-        print("USING DUMMY WORKFLOW CLASS | NO DFT SUBMISSION")
-
-        super().__init__(*args, **kwargs)
 
 
 class DummyWorkflow(Workflow):

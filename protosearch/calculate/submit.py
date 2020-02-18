@@ -8,6 +8,12 @@ from protosearch.build_bulk.classification import PrototypeClassification
 from .calculator import get_calculator
 from .vasp import get_poscar_from_atoms
 
+def get_submitter(cluster):
+    if cluster == 'tri':
+        return TriSubmit
+    elif cluster == 'nersc':
+        return NerscSubmit
+
 
 class Submit:
     """
@@ -185,79 +191,9 @@ class TriSubmit(Submit):
 
 class NerscSubmit(Submit):
     """
+    WIP!
+
     Set up VASP calculations on NERSC for bulk structure enumerated
-    with the Bulk prototype enumerator developed by A. Jain, described in:
-    A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
-
-    atoms: ASE Atoms object
-    calc_parameters: dict
-        Optional specification of parameters, such as {ecut: 300}.
-        If not specified, the parameter standards given in
-        ./utils/standards.py will be applied
-    qos: quality of service SLURM option
-       'debug', 'scavenger' or 'premium'
-    partition: SLURM partition
-       'regular' or 'scavenger'
-    time: SLURM job time allocation
-    nodes: SLURM node allocation
-    ntasks: number of processes per node. 66 on cori knl  
-    basepath: str
-        Path to your root project directory for running calculations
-        defaults to $SCRATCH/protosearch
-    """
-
-    def __init__(self,
-                 atoms,
-                 account,
-                 calc_parameters=None,
-                 qos='premium',
-                 partition='regular',
-                 time='1.00.00',
-                 nodes=10,
-                 ntasks=66,
-                 basepath='$SCRATCH/protosearch',
-                 ):
-
-        super().__init__(atoms,
-                         basepath,
-                         calc_parameters)
-
-        self.qos = qos
-        self.partition = partition
-        self.time = time
-        self.account = account
-        self.nodes = nodes
-        self.ntasks = ntasks
-
-    def submit_calculation(self):
-        """Submit calculation for structure
-        First the execution path is set, then the initial POSCAR and models.py
-        are written to the directory.
-        """
-
-        self.set_execution_path(strict_format=False)
-        self.write_submission_files()
-        self.write_submit_script()
-
-        command = shlex.split('sh submit.sh')
-        subprocess.call(command, cwd=self.excpath)
-
-    def write_submit_script(self):
-        script = get_nersc_submit_script(self,
-                                         self.excpath,
-                                         qos=self.qos,
-                                         partition=self.partition,
-                                         time=self.time,
-                                         account=self.account,
-                                         nodes=self.nodes,
-                                         ntasks=self.ntasks)
-        with open(self.excpath + '/submit.sh', 'w') as f:
-            f.write(script)
-
-
-class SlacSubmit(Submit):
-    """
-    Set up VASP calculations on SLAC cluster for bulk structure enumerated
     with the Bulk prototype enumerator developed by A. Jain, described in:
     A. Jain and T. Bligaard, Phys. Rev. B 98, 214112 (2018)
 
