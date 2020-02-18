@@ -41,7 +41,7 @@ class SpglibInterface:
     def get_primitive_atoms(self, atoms):
         """Transform to primitive cell"""
 
-        lattice, scaled_positions, numbers = standardize_cell(self.atoms,
+        lattice, scaled_positions, numbers = standardize_cell(atoms,
                                                               to_primitive=True,
                                                               no_idealize=True,
                                                               symprec=1e-5)
