@@ -3,3 +3,4 @@ numpy>=1.14
 BulkEnumerator>=0.0.2
 pathos>=0.2.4
 spglib==1.14.1.post0
+shapely
