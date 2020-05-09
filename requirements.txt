@@ -1,6 +1,7 @@
 ase>=3.19
-numpy>=1.14
+numpy>=1.18
 BulkEnumerator>=0.0.2
 pathos>=0.2.4
 spglib==1.14.1.post0
+catlearn>=0.6.2
 shapely
