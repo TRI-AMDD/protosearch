@@ -7,4 +7,9 @@ setup(name="protosearch",
                         "numpy>=1.18",
                         "CatLearn>=0.6.2",
                         "shapely"],
+      package_data={
+          "protosearch.oqmd": ["*.csv"],
+          "protosearch.build_bulk": ["*.db"],
+      },
+      include_package_data=True,
       )

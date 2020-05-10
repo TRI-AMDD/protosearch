@@ -27,7 +27,6 @@ class OqmdInterface:
         elif source == 'oqmd':
             self.dbfile = path + '/oqmd_ver3.db'
 
-
     def create_proto_data_set(self,
                               chemical_formula,
                               max_atoms=None):
