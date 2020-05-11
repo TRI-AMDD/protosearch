@@ -1,0 +1,1 @@
+BulkEnumerator>=0.0.2

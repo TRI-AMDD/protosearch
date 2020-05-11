@@ -1,0 +1,4 @@
+include LICENSE README.md requirements*.txt
+recursive-include camd *.py *.db *.dat *.csv
+prune protosearch/build_bulk/tests
+prune protosearch/calculate/tests
