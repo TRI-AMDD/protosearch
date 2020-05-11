@@ -12,7 +12,7 @@ the ICSD and OQMD
 setup(
     name='protosearch',
     url="https://github.com/ToyotaReseachInstitute/protosearch",
-    version="2020.4.28-dev",
+    version="2020.5.10",
     packages=find_namespace_packages(),
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
