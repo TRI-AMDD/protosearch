@@ -9,7 +9,7 @@ setup(name="protosearch",
                         "shapely"],
       package_data={
           "protosearch.oqmd": ["*.csv"],
-          "protosearch.build_bulk": ["*.db"],
+          "protosearch.build_bulk": ["*.db", "*.dat"],
       },
       include_package_data=True,
       )
