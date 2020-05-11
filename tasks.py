@@ -52,7 +52,7 @@ def set_ver(ctx):
 
 
 @task
-def merge_stable(ctx):
+def tag_github(ctx):
     """
     Tag and merge into stable branch.
 
@@ -61,10 +61,6 @@ def merge_stable(ctx):
     ctx.run("git commit -a -m \"v%s release\"" % (NEW_VER, ), warn=True)
     ctx.run("git tag -a v%s -m \"v%s release\"" % (NEW_VER, NEW_VER))
     ctx.run("git push --tags")
-    ctx.run("git checkout stable")
-    ctx.run("git pull")
-    ctx.run("git merge master")
-    ctx.run("git push")
     ctx.run("git checkout master")
 
 
@@ -132,5 +128,5 @@ def release(ctx, notest=False, nover=False):
     if not notest:
         ctx.run("pytest protosearch")
     publish(ctx)
-    merge_stable(ctx)
+    tag_github(ctx)
     release_github(ctx)
